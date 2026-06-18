@@ -43,8 +43,8 @@ graph LR
         T[S3 Static Website<br/>Testing Dashboard]
         T -- POST --> B
         T -- POST --> X{Test Controller<br/>Lambda}
-        T -- GET --> Y[GET /orders/{id}]
-        Y --> V{Lambda Order Reader}
+        T -- GET --> Y[GET /orders/:id]
+        Y --> V[Lambda Order Reader]
         X -- Publish --> J
         X -- Upload --> G
     end
