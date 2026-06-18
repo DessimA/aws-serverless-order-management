@@ -1,0 +1,5 @@
+const API_ENDPOINT = '__API_ENDPOINT__';
+const TEST_ENDPOINT = '__TEST_ENDPOINT__';
+const READ_ENDPOINT = '__READ_ENDPOINT__';
+const S3_BUCKET = '__S3_BUCKET__';
+const AWS_REGION = '__AWS_REGION__';

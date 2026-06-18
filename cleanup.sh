@@ -19,6 +19,13 @@ if aws s3api head-bucket --bucket "$S3_BUCKET" --region "$AWS_REGION" 2>/dev/nul
     echo "S3 bucket deleted: $S3_BUCKET"
 fi
 
+FRONTEND_BUCKET="order-frontend-${RESOURCE_SUFFIX}"
+if aws s3api head-bucket --bucket "$FRONTEND_BUCKET" --region "$AWS_REGION" 2>/dev/null; then
+    aws s3 rm "s3://${FRONTEND_BUCKET}" --recursive --region "$AWS_REGION" 2>/dev/null || true
+    aws s3api delete-bucket --bucket "$FRONTEND_BUCKET" --region "$AWS_REGION" || true
+    echo "Frontend S3 bucket deleted: $FRONTEND_BUCKET"
+fi
+
 # === Event Bus ===
 BUS_NAME="orders-event-bus-${RESOURCE_SUFFIX}"
 if aws events describe-event-bus --name "$BUS_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
@@ -38,7 +45,7 @@ if aws events describe-event-bus --name "$BUS_NAME" --region "$AWS_REGION" >/dev
 fi
 
 # === Lambda Functions ===
-for name in "order-persister-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-${RESOURCE_SUFFIX}" "order-lifecycle-update-${RESOURCE_SUFFIX}" "order-file-validator-${RESOURCE_SUFFIX}" "order-pre-validator-${RESOURCE_SUFFIX}" "order-validator-${RESOURCE_SUFFIX}"; do
+for name in "order-persister-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-${RESOURCE_SUFFIX}" "order-lifecycle-update-${RESOURCE_SUFFIX}" "order-file-validator-${RESOURCE_SUFFIX}" "order-pre-validator-${RESOURCE_SUFFIX}" "order-validator-${RESOURCE_SUFFIX}" "order-reader-${RESOURCE_SUFFIX}" "test-controller-${RESOURCE_SUFFIX}"; do
     if aws lambda get-function --function-name "$name" --region "$AWS_REGION" >/dev/null 2>&1; then
         REMAINING_LAMBDAS=$(aws lambda list-event-source-mappings --function-name "$name" --region "$AWS_REGION" --query "EventSourceMappings[].UUID" --output text 2>/dev/null || true)
         for UUID in $REMAINING_LAMBDAS; do
@@ -50,7 +57,7 @@ for name in "order-persister-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-${RESOU
 done
 
 # === IAM Roles ===
-for suffix in "order-pre-validator-role-${RESOURCE_SUFFIX}" "order-validator-role-${RESOURCE_SUFFIX}" "order-file-validator-role-${RESOURCE_SUFFIX}" "order-persister-role-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-role-${RESOURCE_SUFFIX}" "order-lifecycle-update-role-${RESOURCE_SUFFIX}"; do
+for suffix in "order-pre-validator-role-${RESOURCE_SUFFIX}" "order-validator-role-${RESOURCE_SUFFIX}" "order-file-validator-role-${RESOURCE_SUFFIX}" "order-persister-role-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-role-${RESOURCE_SUFFIX}" "order-lifecycle-update-role-${RESOURCE_SUFFIX}" "order-reader-role-${RESOURCE_SUFFIX}" "test-controller-role-${RESOURCE_SUFFIX}"; do
     ROLE_NAME="$suffix"
     if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
         ATTACHED_POLICIES=$(aws iam list-attached-role-policies --role-name "$ROLE_NAME" --query "AttachedPolicies[].PolicyArn" --output text 2>/dev/null || true)

@@ -39,12 +39,14 @@ graph LR
         R -- Update --> S
     end
 
-    subgraph "Futuro: Frontend"
-        T[S3 Static Website]
+    subgraph "Frontend de Testes"
+        T[S3 Static Website<br/>Testing Dashboard]
         T -- POST --> B
-        T -- GET --> U[Reader API Gateway]
-        U -- Proxy --> V{Lambda Order Reader}
-        V -- Query --> S
+        T -- POST --> X{Test Controller<br/>Lambda}
+        T -- GET --> Y[GET /orders/{id}]
+        Y --> V{Lambda Order Reader}
+        X -- Publish --> J
+        X -- Upload --> G
     end
 
     %% Estilizacao para alto contraste (Fonte Branca)
@@ -67,9 +69,10 @@ graph LR
     style Q fill:#880E4F,stroke:#fff,color:#fff
     style R fill:#333399,stroke:#fff,color:#fff
     style S fill:#0D47A1,stroke:#fff,color:#fff
-    style T fill:#1B5E20,stroke:#fff,stroke-dasharray: 5 5,color:#fff
-    style U fill:#4A148C,stroke:#fff,stroke-dasharray: 5 5,color:#fff
-    style V fill:#333399,stroke:#fff,stroke-dasharray: 5 5,color:#fff
+    style T fill:#1B5E20,stroke:#fff,color:#fff
+    style X fill:#333399,stroke:#fff,color:#fff
+    style Y fill:#4A148C,stroke:#fff,color:#fff
+    style V fill:#333399,stroke:#fff,color:#fff
 ```
 
 ## 3. Stack Tecnológica
@@ -117,6 +120,15 @@ As Lambdas de processamento final são acionadas por filas SQS FIFO que atuam co
 
 Todas as três Lambdas tratam corretamente o campo `detail` do envelope do EventBridge como string JSON, realizando `json.loads()` adicional antes de acessar os dados.
 
+### 4.5. Camada de Consulta (Leitura de Pedidos)
+A Lambda `read_order` expõe um endpoint `GET /orders/{orderId}` no API Gateway existente. Ela consulta a tabela DynamoDB `order-production-data` via `GetItem` e retorna o item completo ou `404` se não encontrado. Respostas incluem headers CORS para integração com o frontend.
+
+### 4.6. Controlador de Testes (`test_controller`)
+Lambda auxiliar de uso interno (rota `POST /test` do mesmo API Gateway) que orquestra três ações:
+- **`publish_event`**: Publica eventos de ciclo de vida (`OrderCancelled`/`OrderUpdated`) no EventBridge para testar os fluxos de cancelamento/atualização.
+- **`upload_file`**: Faz upload de conteúdo para o bucket S3 de dados, acionando o fluxo de validação assíncrona (`file_validator` → DynamoDB Audit + SNS).
+- **`list_files`**: Lista arquivos no bucket S3 para verificação pós-teste.
+
 ## 5. Estrutura do Projeto
 
 A organização do repositório segue padrões de modularidade para facilitar a manutenção e o deploy independente de componentes:
@@ -129,7 +141,7 @@ aws-serverless-order-ingestion/
 │   ├── deploy-s3-flow.sh       # Provisiona S3, SQS Standard, File Validator e Auditoria
 │   ├── deploy-order-processor.sh # Provisiona o Processador Central (persistencia)
 │   ├── deploy-lifecycle-ops.sh # Provisiona fluxos de Alterar e Cancelar
-│   ├── deploy-frontend.sh      # (Planejado) Frontend S3 + API de consulta
+│   ├── deploy-frontend.sh      # Frontend S3 + Lambdas read_order + test_controller
 │   └── validate-flow.sh        # Script automatizado de testes E2E
 ├── src/                        # Codigo-fonte das funcoes AWS Lambda
 │   ├── pre_validator/          # Logica de pre-validacao e envio para SQS FIFO
@@ -137,11 +149,13 @@ aws-serverless-order-ingestion/
 │   ├── batch_processor/        # Logica de extracao de arquivos e auditoria (S3 → DynamoDB)
 │   ├── order_processor/        # Persistencia do estado inicial do pedido
 │   ├── lifecycle_ops/          # Operacoes de atualizacao e cancelamento
-│   └── read_order/             # (Planejado) Leitura de pedidos para o frontend
-├── frontend/                   # (Planejado) Arquivos estaticos do frontend
-│   ├── index.html
-│   ├── style.css
-│   └── app.js
+│   ├── read_order/             # Leitura de pedidos (GET /orders/{id})
+│   └── test_controller/        # Controlador de testes (EventBridge + S3 upload)
+├── frontend/                   # Dashboard de testes (S3 Static Website)
+│   ├── index.html              # Interface com abas para cada fluxo
+│   ├── style.css               # Tema escuro responsivo
+│   ├── config.template.js      # Template com placeholders (processado pelo deploy)
+│   └── app.js                  # Logica de teste por seção (API, S3, Lifecycle, Read)
 ├── samples/                    # Exemplos de payloads para testes e integracao
 │   ├── api_request.json        # Modelo de requisicao para o API Gateway
 │   ├── valid_batch.json        # Modelo de arquivo para processamento S3
@@ -209,7 +223,8 @@ chmod +x run.sh
 3.  **Deploy Fase 2 (S3):** Cria o bucket de dados, a fila SQS Standard, a Lambda `file_validator`, a tabela de auditoria DynamoDB, e a notificação S3 → SQS.
 4.  **Deploy Fase 3 (Processor):** Cria a tabela DynamoDB de produção, a fila SQS FIFO de pedidos pendentes, a Lambda `order_persister`, e a regra EventBridge com `MessageGroupId`.
 5.  **Deploy Fase 4 (Lifecycle):** Cria as filas SQS FIFO e Lambdas de alteração e cancelamento, com suas respectivas regras no EventBridge.
-6.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
+6.  **Deploy Fase 5 (Frontend):** Cria as Lambdas `read_order` e `test_controller`, adiciona os recursos `GET /orders/{orderId}` e `POST /test` ao API Gateway existente, cria o bucket S3 do frontend com Static Website Hosting, e faz upload dos arquivos com URLs injetadas.
+7.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
 
 ### Utilitários (scripts/lib.sh)
 Os scripts de deploy compartilham uma biblioteca de funções comum:
@@ -222,24 +237,39 @@ Os scripts de deploy compartilham uma biblioteca de funções comum:
 
 ## 10. Guia de Testes e Validação
 
-O sistema pode ser validado através de testes manuais ou utilizando o script automatizado `scripts/validate-flow.sh`.
+O sistema pode ser validado de três formas: (1) via dashboard web, (2) via script automatizado, ou (3) via comandos manuais.
 
-### 10.1. Teste de Ingestão via API
-Envie um pedido síncrono para o endpoint gerado pelo API Gateway. O pedido passa por `pre_validator` → SQS FIFO → `order_validator` → EventBridge → `order_persister` → DynamoDB:
+### 10.1. Teste via Dashboard Web (Recomendado)
+Após executar `./run.sh`, o URL do dashboard é exibido no final do `deploy-frontend.sh`. Abra no navegador e utilize as abas:
+
+1. **API Orders**: Preencha `pedidoId` e `clienteId`, clique em "Send Valid Order". Teste cenários de falha com os botões vermelhos.
+2. **S3 Batch**: Clique em "Upload Valid Batch" para testar o fluxo de validação assíncrona. Use "Upload Invalid Schema" para disparar alerta SNS.
+3. **Lifecycle**: Informe um `orderId` existente (criado via API Orders) e teste cancelamento/atualização.
+4. **Consult**: Consulte pedidos pelo ID para verificar o resultado das operações.
+
+O painel lateral exibe logs em tempo real com status e payloads de cada operação.
+
+### 10.2. Teste via Script Automatizado
+```bash
+./scripts/validate-flow.sh
+```
+Este script executa todos os deploy scripts e testa cada fluxo via AWS CLI, verificando a persistência no DynamoDB.
+
+### 10.3. Teste Manual via CLI
+
+#### API Flow
 ```bash
 curl -k -X POST <URL_DO_ENDPOINT>/prod/orders \
      -H "Content-Type: application/json" \
      -d '{"pedidoId": "ORD-001", "clienteId": "CLIENTE-TESTE", "itens": [{"sku": "PROD-A", "qtd": 1}]}'
 ```
 
-### 10.2. Teste de Ingestão via S3 (Audit-Only)
-Faça o upload de um arquivo JSON para o bucket. O arquivo é validado pela Lambda `file_validator` e registrado na tabela de auditoria — **não** cria pedidos na tabela de produção:
+#### S3 Batch (Audit-Only)
 ```bash
 aws s3 cp samples/valid_batch.json s3://order-files-bucket-<seu-sufixo>/
 ```
 
-### 10.3. Teste de Operações de Ciclo de Vida
-Simule eventos de alteração ou cancelamento diretamente no EventBridge:
+#### Lifecycle Operations
 ```bash
 aws events put-events --entries "[{
     \"Source\": \"app.orders.operations\",
@@ -283,59 +313,54 @@ Todas as filas SQS deste projeto (Validação, Processamento, Alteração e Canc
 *   **Funcionamento:** Se uma Lambda falhar repetidamente ao processar uma mensagem (devido a erros de código ou indisponibilidade de recursos externos), a mensagem é movida para a DLQ após a terceira tentativa. Isso evita o bloqueio da fila principal.
 *   **Nota:** Filas padrão (batch S3) também possuem DLQ.
 
-## 13. Próximos Passos (Frontend)
+## 13. Testing Dashboard (Frontend)
 
-O sistema atualmente não possui uma interface gráfica para o usuário final. As seguintes melhorias estão planejadas:
+O sistema inclui um dashboard de testes servido como S3 Static Website, acessível pelo URL exibido ao final do `deploy-frontend.sh`. Sua finalidade é permitir a validação manual de todos os fluxos (sucesso e falha) durante o desenvolvimento.
 
-### 13.1. Frontend via S3 Static Website
-- Criação de um bucket S3 com Static Website Hosting para servir arquivos HTML/CSS/JS.
-- Formulário de criação de pedidos que consome a API POST `/orders` existente.
-- Consulta de pedidos por ID via uma nova API GET `/orders/{orderId}`.
+### 13.1. Interface
 
-### 13.2. Lambda de Leitura (`read_order`)
-- Nova função Lambda para consultar pedidos na tabela `order-production-data` via `GetItem`.
-- Respostas com headers CORS para integração com o frontend.
+O dashboard é dividido em 4 abas, cada uma correspondendo a um fluxo do sistema:
 
-### 13.3. API Gateway Separado para Leitura
-- Novo REST API (`order-reader-api-{SUFFIX}`) com endpoint GET `/orders/{orderId}` e integração proxy Lambda.
-- Recurso OPTIONS configurado para CORS preflight.
+| Aba | Ações de Sucesso | Ações de Falha |
+|-----|-----------------|----------------|
+| **API Orders** | Send Valid Order → pre_validator → SQS FIFO → order_validator → EventBridge → Processor → DynamoDB | Missing pedidoId (400), Missing clienteId (400), Invalid JSON (400), Send Duplicate (ConditionalCheckFailedException → DLQ) |
+| **S3 Batch** | Upload Valid Batch (lista_pedidos válido → DynamoDB Audit) | Upload Invalid Schema (→ SNS Alert), Upload Corrupt File (→ SNS Alert) |
+| **Lifecycle** | Cancel Order, Update Order (EventBridge → SQS FIFO → Lifecycle Lambda → DynamoDB) | Cancel Non-existent, Update Non-existent (ConditionalCheckFailedException → DLQ) |
+| **Consult** | Read Order (GET /orders/{id} → DynamoDB) | Read Non-existent (404) |
 
-### 13.4. Script de Deploy (`deploy-frontend.sh`)
-- Criação/atualização do bucket S3 de frontend com política de leitura pública.
-- Upload dos arquivos estáticos com injeção das URLs das APIs via `sed`.
-- Provisionamento da Lambda de leitura e do API Gateway de consulta.
-- Integração ao pipeline do `run.sh`.
+### 13.2. Componentes do Frontend
 
-### Arquitetura Planejada
+| Arquivo | Descrição |
+|---------|-----------|
+| `frontend/index.html` | Estrutura do dashboard com inputs, botões e painel de logs |
+| `frontend/style.css` | Tema escuro responsivo (grid de 2 colunas: painel + logs) |
+| `frontend/config.template.js` | Template com placeholders (`__API_ENDPOINT__`, etc.) processado pelo deploy |
+| `frontend/app.js` | Lógica de cada cenário de teste: chamadas fetch para API Gateway + processamento de respostas |
 
-```mermaid
-graph LR
-    subgraph "Frontend"
-        BR[Browser] --> S3[(S3 Static Website)]
-    end
+### 13.3. Novas Lambdas
 
-    subgraph "APIs"
-        POST(API Gateway<br/>POST /orders)
-        GET(API Gateway<br/>GET /orders by ID)
-    end
+| Lambda | Endpoint | Função |
+|--------|----------|--------|
+| `read_order` | `GET /orders/{orderId}` | Consulta DynamoDB production e retorna o pedido ou 404 |
+| `test_controller` | `POST /test` | Roteia por ação (`publish_event`, `upload_file`, `list_files`) para testar lifecycle e S3 |
 
-    subgraph "Backend"
-        READER{Lambda<br/>read_order}
-        DB[(DynamoDB<br/>Production)]
-    end
+### 13.4. Painel de Logs
 
-    S3 -- POST --> POST
-    S3 -- GET --> GET
-    GET --> READER
-    READER --> DB
+O dashboard exibe um painel lateral com logs em tempo real de cada operação:
+- ✅ **Verde**: Operação bem-sucedida (status 200/201 esperado)
+- ❌ **Vermelho**: Falha inesperada
+- ⚠️ **Amarelo**: Operação em andamento ou falha esperada
 
-    style BR fill:#232F3E,stroke:#fff,color:#fff
-    style S3 fill:#1B5E20,stroke:#fff,color:#fff,stroke-dasharray: 5 5
-    style POST fill:#4A148C,stroke:#fff,color:#fff
-    style GET fill:#4A148C,stroke:#fff,color:#fff,stroke-dasharray: 5 5
-    style READER fill:#333399,stroke:#fff,color:#fff,stroke-dasharray: 5 5
-    style DB fill:#0D47A1,stroke:#fff,color:#fff
-```
+Cada entrada mostra timestamp, nome do teste, status HTTP e payload completo da resposta.
+
+### 13.5. Fluxos de Notificação SNS (E-mail)
+
+| Gatilho | O que falha | Envia E-mail? |
+|---------|------------|:---:|
+| S3: Upload Invalid Schema | `file_validator` → `ValueError` (lista_pedidos ausente) | ✅ |
+| S3: Upload Corrupt File | `file_validator` → exceção de parse JSON | ✅ |
+| API: Duplicate Order | `order_processor` → `ConditionalCheckFailedException` → DLQ | ❌ |
+| Lifecycle: Non-existent | `cancel_processor`/`update_processor` → `ConditionalCheckFailedException` → DLQ | ❌ |
 
 ---
 **Desenvolvido por [José Anderson](https://github.com/DessimA)**

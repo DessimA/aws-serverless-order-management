@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Management - Testing Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Order Management System</h1>
+        <p class="subtitle">Testing Dashboard</p>
+        <div class="env-badge" id="envBadge"></div>
+    </header>
+
+    <main class="dashboard">
+        <nav class="tabs">
+            <button class="tab active" data-tab="api">API Orders</button>
+            <button class="tab" data-tab="s3">S3 Batch</button>
+            <button class="tab" data-tab="lifecycle">Lifecycle</button>
+            <button class="tab" data-tab="read">Consult</button>
+        </nav>
+
+        <div class="panel-container">
+            <div class="panel tab-content active" id="tab-api">
+                <h2>API Order Flow</h2>
+                <p class="section-desc">Test the synchronous API ingestion: API Gateway → Pre-Validator → SQS FIFO → Validator → EventBridge → Processor → DynamoDB</p>
+
+                <div class="form-group">
+                    <label for="apiPedidoId">pedidoId</label>
+                    <input type="text" id="apiPedidoId" value="ORD-TEST-" placeholder="e.g. ORD-TEST-001">
+                </div>
+                <div class="form-group">
+                    <label for="apiClienteId">clienteId</label>
+                    <input type="text" id="apiClienteId" value="CLI-TEST" placeholder="e.g. CLI-TEST">
+                </div>
+                <div class="form-group">
+                    <label for="apiItens">Itens (JSON array)</label>
+                    <textarea id="apiItens" rows="3">[{"nome": "Test Item", "quantidade": 1, "preco": 99.9}]</textarea>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-success" onclick="testAPI('valid')">Send Valid Order</button>
+                    <button class="btn btn-danger" onclick="testAPI('missing-pedido')">Missing pedidoId</button>
+                    <button class="btn btn-danger" onclick="testAPI('missing-cliente')">Missing clienteId</button>
+                    <button class="btn btn-danger" onclick="testAPI('invalid-json')">Invalid JSON</button>
+                    <button class="btn btn-warning" onclick="testAPI('duplicate')">Send Duplicate</button>
+                </div>
+            </div>
+
+            <div class="panel tab-content" id="tab-s3">
+                <h2>S3 Batch Flow</h2>
+                <p class="section-desc">Test the asynchronous batch ingestion: S3 Upload → SQS Standard → File Validator → DynamoDB Audit + SNS Alerts</p>
+
+                <div class="form-group">
+                    <label for="s3Filename">Filename</label>
+                    <input type="text" id="s3Filename" value="test_pedidos_" placeholder="e.g. pedidos_test.json">
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-success" onclick="testS3('valid')">Upload Valid Batch</button>
+                    <button class="btn btn-danger" onclick="testS3('invalid-schema')">Upload Invalid Schema</button>
+                    <button class="btn btn-danger" onclick="testS3('corrupt')">Upload Corrupt File</button>
+                </div>
+
+                <div class="form-group" style="margin-top:1rem">
+                    <button class="btn btn-outline" onclick="testS3('list')">List Files in S3</button>
+                </div>
+            </div>
+
+            <div class="panel tab-content" id="tab-lifecycle">
+                <h2>Lifecycle Operations</h2>
+                <p class="section-desc">Test cancel and update operations via EventBridge: POST /test → EventBridge → SQS FIFO → Lifecycle Processor → DynamoDB</p>
+
+                <div class="form-group">
+                    <label for="lifecycleOrderId">Target Order ID</label>
+                    <input type="text" id="lifecycleOrderId" placeholder="e.g. ORD-TEST-001">
+                </div>
+                <div class="form-group" id="updateItensGroup" style="display:none">
+                    <label for="updateItens">New Items (JSON array)</label>
+                    <textarea id="updateItens" rows="3">[{"nome": "Updated Item", "quantidade": 5, "preco": 150.0}]</textarea>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-success" onclick="testLifecycle('cancel')">Cancel Order</button>
+                    <button class="btn btn-danger" onclick="testLifecycle('cancel-nonexistent')">Cancel Non-existent</button>
+                    <button class="btn btn-success" onclick="testLifecycle('update')">Update Order</button>
+                    <button class="btn btn-danger" onclick="testLifecycle('update-nonexistent')">Update Non-existent</button>
+                </div>
+            </div>
+
+            <div class="panel tab-content" id="tab-read">
+                <h2>Read Orders</h2>
+                <p class="section-desc">Query orders from the production DynamoDB table via GET /orders/{orderId}</p>
+
+                <div class="form-group">
+                    <label for="readOrderId">Order ID</label>
+                    <input type="text" id="readOrderId" placeholder="e.g. ORD-TEST-001">
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="testRead('valid')">Read Order</button>
+                    <button class="btn btn-danger" onclick="testRead('nonexistent')">Read Non-existent</button>
+                </div>
+
+                <div id="readResult" class="result-card" style="display:none">
+                    <h3>Order Details</h3>
+                    <pre id="readResultContent"></pre>
+                </div>
+            </div>
+        </div>
+
+        <aside class="log-panel">
+            <div class="log-header">
+                <h2>Results Log</h2>
+                <button class="btn btn-small btn-outline" onclick="clearLog()">Clear</button>
+            </div>
+            <div class="log-container" id="logContainer">
+                <p class="log-empty">Click any test button to start</p>
+            </div>
+        </aside>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
