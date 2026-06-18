@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 load_env "$SCRIPT_DIR/../.env"
-validate_env "AWS_REGION" "RESOURCE_SUFFIX"
+validate_env "AWS_REGION" "RESOURCE_SUFFIX" "NOTIFICATION_EMAIL"
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
@@ -35,6 +35,7 @@ if ! aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_
     aws sns create-topic --name "$SNS_TOPIC_NAME" --region "$AWS_REGION"
 fi
 SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME" --query Attributes.TopicArn --output text --region "$AWS_REGION")
+aws sns subscribe --topic-arn "$SNS_TOPIC_ARN" --protocol email --notification-endpoint "$NOTIFICATION_EMAIL" --region "$AWS_REGION" 2>/dev/null || true
 
 # ================================================================
 # LAMBDA PRE-VALIDATOR (LambdaPre: API Gateway → SQS FIFO)

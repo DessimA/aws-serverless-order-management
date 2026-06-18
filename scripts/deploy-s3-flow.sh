@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 load_env "$SCRIPT_DIR/../.env"
-validate_env "AWS_REGION" "RESOURCE_SUFFIX"
+validate_env "AWS_REGION" "RESOURCE_SUFFIX" "NOTIFICATION_EMAIL"
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 ROLE_NAME="order-file-validator-role-$RESOURCE_SUFFIX"
@@ -84,6 +84,7 @@ else
 fi
 
 SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME" --query Attributes.TopicArn --output text --region "$AWS_REGION")
+aws sns subscribe --topic-arn "$SNS_TOPIC_ARN" --protocol email --notification-endpoint "$NOTIFICATION_EMAIL" --region "$AWS_REGION" 2>/dev/null || true
 aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --timeout 60 --environment "Variables={DYNAMODB_TABLE=$AUDIT_TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN}" --region "$AWS_REGION"
 
 # === SQS → Lambda event source mapping ===
