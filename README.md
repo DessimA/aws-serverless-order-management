@@ -292,13 +292,34 @@ O sistema atualmente não possui uma interface gráfica para o usuário final. A
 - Integração ao pipeline do `run.sh`.
 
 ### Arquitetura Planejada
-```
-[Browser] → S3 Static Website → POST /orders (API existente)
-                               → GET /orders/{id} (nova API)
-                                              ↓
-                                    Lambda read_order
-                                              ↓
-                                     DynamoDB Production
+
+```mermaid
+graph LR
+    subgraph "Frontend"
+        BR[Browser] --> S3[(S3 Static Website)]
+    end
+
+    subgraph "APIs"
+        POST[API Gateway<br/>POST /orders]
+        GET[API Gateway<br/>GET /orders/{id}]
+    end
+
+    subgraph "Backend"
+        READER{Lambda<br/>read_order}
+        DB[(DynamoDB<br/>Production)]
+    end
+
+    S3 -- POST --> POST
+    S3 -- GET --> GET
+    GET --> READER
+    READER --> DB
+
+    style BR fill:#232F3E,stroke:#fff,color:#fff
+    style S3 fill:#1B5E20,stroke:#fff,color:#fff,stroke-dasharray: 5 5
+    style POST fill:#4A148C,stroke:#fff,color:#fff
+    style GET fill:#4A148C,stroke:#fff,color:#fff,stroke-dasharray: 5 5
+    style READER fill:#333399,stroke:#fff,color:#fff,stroke-dasharray: 5 5
+    style DB fill:#0D47A1,stroke:#fff,color:#fff
 ```
 
 ---
