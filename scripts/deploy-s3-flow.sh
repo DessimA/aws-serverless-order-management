@@ -61,9 +61,10 @@ fi
 aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "FileValidatorAccess" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\"],\"Resource\":\"arn:aws:s3:::$BUCKET_NAME/*\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$S3_EVENT_QUEUE_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"dynamodb:PutItem\"],\"Resource\":\"arn:aws:dynamodb:$AWS_REGION:$ACCOUNT_ID:table/$AUDIT_TABLE_NAME\"},{\"Effect\":\"Allow\",\"Action\":\"sns:Publish\",\"Resource\":\"arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME\"}]}"
 
 # === S3 → SQS Notification ===
+aws sqs set-queue-attributes --queue-url "$S3_EVENT_QUEUE_URL" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"s3.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"$S3_EVENT_QUEUE_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:aws:s3:::$BUCKET_NAME\\\"}}}]}\"}" --region "$AWS_REGION"
+sleep 5
 S3_NOTIFICATION_CONFIG='{"QueueConfigurations":[{"Id":"'$S3_EVENT_QUEUE_NAME'","QueueArn":"'$S3_EVENT_QUEUE_ARN'","Events":["s3:ObjectCreated:*"]}]}'
 aws s3api put-bucket-notification-configuration --bucket "$BUCKET_NAME" --notification-configuration "$S3_NOTIFICATION_CONFIG" --region "$AWS_REGION"
-aws sqs set-queue-attributes --queue-url "$S3_EVENT_QUEUE_URL" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"s3.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"$S3_EVENT_QUEUE_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:aws:s3:::$BUCKET_NAME\\\"}}}]}\"}" --region "$AWS_REGION"
 
 # === Lambda Deployment ===
 cd ../src/batch_processor
