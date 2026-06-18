@@ -15,7 +15,10 @@ def lambda_handler(event, context):
     try:
         # Extração e parse do corpo da requisição
         body_str = event.get('body', '{}')
-        body = json.loads(body_str) if body_str else {}
+        if isinstance(body_str, dict):
+            body = body_str
+        else:
+            body = json.loads(body_str) if body_str else {}
 
         order_id = body.get('pedidoId')
         client_id = body.get('clienteId')
@@ -72,5 +75,6 @@ def lambda_handler(event, context):
         print(f"Critical error: {str(e)}")
         return {
             'statusCode': 500,
+            'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({'error': 'Internal server error during ingestion'})
         }

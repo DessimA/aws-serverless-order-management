@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f ../.env ]; then export $(grep -v '^#' ../.env | xargs); fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+
+load_env "$SCRIPT_DIR/../.env"
+validate_env "AWS_REGION" "RESOURCE_SUFFIX"
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REGION="$AWS_REGION"
@@ -14,7 +18,6 @@ echo "--- Starting Full System Validation ---"
 # 1. Teste de Ingestao (API)
 API_ID=$(aws apigateway get-rest-apis --region "$REGION" --query "items[?name=='order-ingestion-api-$SUFFIX'].id" --output text)
 ENDPOINT="https://$API_ID.execute-api.$REGION.amazonaws.com/prod/orders"
-[ "$ENDPOINT" == *"localhost"* ] || ENDPOINT="https://$API_ID.execute-api.$REGION.amazonaws.com/prod/orders"
 
 ORDER_ID="PRO-$(date +%s)"
 echo "Sending order $ORDER_ID via API..."

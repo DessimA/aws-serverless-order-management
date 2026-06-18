@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f ../.env ]; then export $(grep -v '^#' ../.env | xargs); fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+
+load_env "$SCRIPT_DIR/../.env"
+validate_env "AWS_REGION" "RESOURCE_SUFFIX" "NOTIFICATION_EMAIL"
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REGION="$AWS_REGION"
@@ -20,8 +24,7 @@ FIFO_QUEUE_URL="https://sqs.$REGION.amazonaws.com/$ACCOUNT_ID/order-ingestion-qu
 if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
     aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
     aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-    echo "Aguardando propagacao do IAM Role..."
-    sleep 15
+    wait_for_iam_role "$ROLE_NAME"
 fi
 
 # 2. Infraestrutura (SNS, Dynamo, SQS, S3)

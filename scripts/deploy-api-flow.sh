@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f ../.env ]; then export $(grep -v '^#' ../.env | xargs); fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+
+load_env "$SCRIPT_DIR/../.env"
+validate_env "AWS_REGION" "RESOURCE_SUFFIX"
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 ROLE_NAME="order-api-validator-role-$RESOURCE_SUFFIX"
@@ -21,8 +25,7 @@ BUS_ARN=$(aws events describe-event-bus --name "$BUS_NAME" --region "$AWS_REGION
 if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
     aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
     aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-    echo "Aguardando propagacao do IAM Role..."
-    sleep 15
+    wait_for_iam_role "$ROLE_NAME"
 fi
 
 # 3. SQS
@@ -57,7 +60,7 @@ else
 fi
 
 aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --environment "Variables={SQS_QUEUE_URL=$SQS_URL,EVENT_BUS_NAME=$BUS_NAME}" --region "$AWS_REGION"
-rm lambda_deploy.zip
+rm -f lambda_deploy.zip
 
 # 5. API Gateway
 API_ID=$(aws apigateway get-rest-apis --region "$AWS_REGION" --query "items[?name=='$API_NAME'].id" --output text)

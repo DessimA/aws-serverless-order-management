@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f ../.env ]; then export $(grep -v '^#' ../.env | xargs); fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+
+load_env "$SCRIPT_DIR/../.env"
+validate_env "AWS_REGION" "RESOURCE_SUFFIX"
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REGION="$AWS_REGION"
@@ -19,7 +23,7 @@ RULE_NAME="order-validated-routing-rule-$SUFFIX"
 if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
     aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
     aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-    sleep 10
+    wait_for_iam_role "$ROLE_NAME"
 fi
 
 # 2. DynamoDB & SQS
@@ -48,8 +52,10 @@ zip -q ../../scripts/processor_lambda.zip index.py
 cd ../../scripts
 
 if ! aws lambda get-function --function-name "$LAMBDA_NAME" --region "$REGION" >/dev/null 2>&1; then
-    aws lambda create-function --function-name "$LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME" --handler index.lambda_handler --zip-file fileb://processor_lambda.zip --region "$REGION" --timeout 60
-    aws lambda wait function-active-v2 --function-name "$LAMBDA_NAME" --region "$REGION"
+    for i in {1..3}; do
+        aws lambda create-function --function-name "$LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME" --handler index.lambda_handler --zip-file fileb://processor_lambda.zip --region "$REGION" --timeout 60 && break || sleep 10
+    done
+    wait_for_lambda_active "$LAMBDA_NAME" "$REGION"
 else
     aws lambda update-function-code --function-name "$LAMBDA_NAME" --zip-file fileb://processor_lambda.zip --region "$REGION"
     aws lambda wait function-updated-v2 --function-name "$LAMBDA_NAME" --region "$REGION"

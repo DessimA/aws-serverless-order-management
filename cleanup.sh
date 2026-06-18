@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
-else
-    echo "Erro: Arquivo .env nao encontrado na raiz do projeto."
-    exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/scripts/lib.sh"
+
+load_env "$SCRIPT_DIR/.env"
+validate_env "RESOURCE_SUFFIX" "AWS_REGION"
 
 SUFFIX=$RESOURCE_SUFFIX
 REGION=$AWS_REGION
@@ -37,6 +36,7 @@ if aws events describe-event-bus --name "$BUS_NAME" --region "$REGION" >/dev/nul
         if [ "$rule" != "None" ] && [ -n "$rule" ]; then
             TARGETS=$(aws events list-targets-by-rule --rule "$rule" --event-bus-name "$BUS_NAME" --query "Targets[*].Id" --output text --region "$REGION")
             if [ "$TARGETS" != "None" ] && [ -n "$TARGETS" ]; then
+                # shellcheck disable=SC2086
                 aws events remove-targets --rule "$rule" --event-bus-name "$BUS_NAME" --ids $TARGETS --region "$REGION"
             fi
             aws events delete-rule --name "$rule" --event-bus-name "$BUS_NAME" --region "$REGION"
