@@ -15,24 +15,6 @@ wait_for_iam_role() {
     exit 1
 }
 
-wait_for_lambda_active() {
-    local function_name="$1"
-    local region="$2"
-    echo "Aguardando Lambda $function_name ficar ativa..."
-    for i in {1..12}; do
-        local state
-        state=$(aws lambda get-function --function-name "$function_name" --region "$region" --query 'Configuration.State' --output text 2>/dev/null)
-        if [ "$state" == "Active" ]; then
-            echo "Lambda $function_name ativa."
-            return 0
-        fi
-        echo "Tentativa $i/12: Lambda $function_name ainda $state, aguardando 5s..."
-        sleep 5
-    done
-    echo "ERRO: Lambda $function_name nao ficou ativa apos 60 segundos"
-    exit 1
-}
-
 wait_for_sqs_queue() {
     local queue_name="$1"
     local region="$2"

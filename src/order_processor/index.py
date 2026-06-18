@@ -5,7 +5,7 @@ from datetime import datetime
 from botocore.exceptions import ClientError
 
 DYNAMODB_TABLE = os.environ['DYNAMODB_TABLE']
-table = boto3.resource('dynamodb').Table(DYNAMODB_TABLE)
+production_table = boto3.resource('dynamodb').Table(DYNAMODB_TABLE)
 
 def lambda_handler(event, context):
     print(f"Processing event from queue: {json.dumps(event)}")
@@ -13,27 +13,27 @@ def lambda_handler(event, context):
     for record in event['Records']:
         try:
             envelope = json.loads(record['body'])
-            order_data = envelope.get('detail', {})
+            order_detail = json.loads(envelope.get('detail', '{}'))
 
-            order_id = order_data.get('pedidoId')
+            order_id = order_detail.get('pedidoId')
             if not order_id:
                 print(f"Skipping record with missing pedidoId")
                 continue
 
-            processed_item = {
+            dynamodb_item = {
                 'orderId': str(order_id),
-                'clientId': str(order_data.get('clienteId')),
-                'items': order_data.get('itens', []),
-                'origin': order_data.get('origem', 'API'),
+                'clientId': str(order_detail.get('clienteId')),
+                'items': order_detail.get('itens', []),
+                'origin': order_detail.get('origem', 'API'),
                 'status': 'PROCESSED',
                 'processedAt': datetime.utcnow().isoformat() + "Z",
                 'eventTime': envelope.get('time')
             }
 
-            item_final = {k: v for k, v in processed_item.items() if v is not None}
+            clean_item = {k: v for k, v in dynamodb_item.items() if v is not None}
 
-            table.put_item(
-                Item=item_final,
+            production_table.put_item(
+                Item=clean_item,
                 ConditionExpression='attribute_not_exists(orderId)'
             )
             print(f"Order {order_id} successfully persisted in production database.")

@@ -1,15 +1,15 @@
 import json, os, boto3
 from datetime import datetime
 from botocore.exceptions import ClientError
-table = boto3.resource('dynamodb').Table(os.environ['DYNAMODB_TABLE'])
+production_table = boto3.resource('dynamodb').Table(os.environ['DYNAMODB_TABLE'])
 
 def lambda_handler(event, context):
     for record in event['Records']:
         try:
-            payload = json.loads(record['body']).get('detail', {})
+            payload = json.loads(json.loads(record['body']).get('detail', '{}'))
             order_id = payload.get('pedidoId')
             if order_id:
-                table.update_item(
+                production_table.update_item(
                     Key={'orderId': str(order_id)},
                     UpdateExpression="SET #s = :status, updatedAt = :ts",
                     ExpressionAttributeNames={'#s': 'status'},

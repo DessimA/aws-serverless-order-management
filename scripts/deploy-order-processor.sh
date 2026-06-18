@@ -8,77 +8,75 @@ load_env "$SCRIPT_DIR/../.env"
 validate_env "AWS_REGION" "RESOURCE_SUFFIX"
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-REGION="$AWS_REGION"
-SUFFIX="$RESOURCE_SUFFIX"
+ROLE_NAME="order-persister-role-$RESOURCE_SUFFIX"
+LAMBDA_NAME="order-persister-$RESOURCE_SUFFIX"
+QUEUE_NAME="order-persister-queue-$RESOURCE_SUFFIX.fifo"
+DLQ_NAME="order-persister-dlq-$RESOURCE_SUFFIX.fifo"
+EVENT_BUS_NAME="orders-event-bus-$RESOURCE_SUFFIX"
+TABLE_NAME="order-production-data-$RESOURCE_SUFFIX"
+EVENTBRIDGE_RULE_NAME="orders-persist-validated-$RESOURCE_SUFFIX"
 
-ROLE_NAME="order-final-processor-role-$SUFFIX"
-TABLE_NAME="orders-production-db-$SUFFIX"
-QUEUE_NAME="orders-pending-processor-queue-$SUFFIX"
-DLQ_NAME="orders-pending-processor-dlq-$SUFFIX"
-LAMBDA_NAME="order-final-processor-$SUFFIX"
-BUS_NAME="pedidos-event-bus-$SUFFIX"
-RULE_NAME="order-validated-routing-rule-$SUFFIX"
+# === DynamoDB Table ===
+if ! aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+    aws dynamodb create-table --table-name "$TABLE_NAME" \
+        --attribute-definitions AttributeName=orderId,AttributeType=S \
+        --key-schema AttributeName=orderId,KeyType=HASH \
+        --billing-mode PAY_PER_REQUEST --region "$AWS_REGION"
+    aws dynamodb wait table-exists --table-name "$TABLE_NAME" --region "$AWS_REGION"
+fi
+PRODUCTION_TABLE_ARN=$(aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$AWS_REGION" --query Table.TableArn --output text)
 
-# 1. IAM Role
+# === IAM Role ===
 if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
     aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
     aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
     wait_for_iam_role "$ROLE_NAME"
 fi
 
-# 2. DynamoDB & SQS
-if ! aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$REGION" >/dev/null 2>&1; then
-    aws dynamodb create-table --table-name "$TABLE_NAME" --attribute-definitions AttributeName=orderId,AttributeType=S --key-schema AttributeName=orderId,KeyType=HASH --billing-mode PAY_PER_REQUEST --region "$REGION"
+# === SQS Queues ===
+if ! aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+    aws sqs create-queue --queue-name "$DLQ_NAME" --attributes "{\"FifoQueue\":\"true\"}" --region "$AWS_REGION"
 fi
-DYNAMO_ARN="arn:aws:dynamodb:$REGION:$ACCOUNT_ID:table/$TABLE_NAME"
+DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
 
-if ! aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$REGION" >/dev/null 2>&1; then
-    aws sqs create-queue --queue-name "$DLQ_NAME" --region "$REGION"
+if ! aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+    aws sqs create-queue --queue-name "$QUEUE_NAME" --attributes "{\"FifoQueue\":\"true\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
 fi
-DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$REGION" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$REGION")
+QUEUE_URL=$(aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text)
+QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$QUEUE_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
+wait_for_sqs_queue "$QUEUE_NAME" "$AWS_REGION"
 
-if ! aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$REGION" >/dev/null 2>&1; then
-    aws sqs create-queue --queue-name "$QUEUE_NAME" --attributes "{\"VisibilityTimeout\":\"70\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$REGION"
-fi
-SQS_URL=$(aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$REGION" --query QueueUrl --output text)
-SQS_ARN=$(aws sqs get-queue-attributes --queue-url "$SQS_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$REGION")
+# Inline policy (must be after QUEUE_ARN is resolved)
+aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "OrderProductionDynamoDB" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"dynamodb:PutItem\",\"dynamodb:UpdateItem\",\"dynamodb:GetItem\"],\"Resource\":\"$PRODUCTION_TABLE_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$QUEUE_ARN\"}]}"
 
-# 3. Permissoes
-aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "ProcessorAccessPolicy" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$SQS_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"dynamodb:PutItem\",\"dynamodb:GetItem\"],\"Resource\":\"$DYNAMO_ARN\"}]}"
+# === EventBridge Rule -> SQS ===
+aws events put-rule --name "$EVENTBRIDGE_RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --event-pattern '{"source":["app.orders.validation"],"detail-type":["OrderValidated"]}' --region "$AWS_REGION"
+aws events put-targets --rule "$EVENTBRIDGE_RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --targets "Id"="1",Arn="$QUEUE_ARN","SqsParameters"="{\"MessageGroupId\":\"order-persister\"}" --region "$AWS_REGION"
 
-# 4. Lambda Deployment
+# SqS Queue Policy for EventBridge
+aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"$QUEUE_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:aws:events:$AWS_REGION:$ACCOUNT_ID:rule/$EVENT_BUS_NAME/$EVENTBRIDGE_RULE_NAME\\\"}}}]}\"}" --region "$AWS_REGION"
+
+# === Lambda Deployment ===
 cd ../src/order_processor
-zip -q ../../scripts/processor_lambda.zip index.py
+zip -q ../../scripts/lambda_deploy.zip index.py
 cd ../../scripts
 
-if ! aws lambda get-function --function-name "$LAMBDA_NAME" --region "$REGION" >/dev/null 2>&1; then
+if ! aws lambda get-function --function-name "$LAMBDA_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+    echo "Criando funcao Lambda $LAMBDA_NAME..."
     for i in {1..3}; do
-        aws lambda create-function --function-name "$LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME" --handler index.lambda_handler --zip-file fileb://processor_lambda.zip --region "$REGION" --timeout 60 && break || sleep 10
+        aws lambda create-function --function-name "$LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy.zip --region "$AWS_REGION" && break || sleep 10
     done
-    wait_for_lambda_active "$LAMBDA_NAME" "$REGION"
+    aws lambda wait function-active-v2 --function-name "$LAMBDA_NAME" --region "$AWS_REGION"
 else
-    aws lambda update-function-code --function-name "$LAMBDA_NAME" --zip-file fileb://processor_lambda.zip --region "$REGION"
-    aws lambda wait function-updated-v2 --function-name "$LAMBDA_NAME" --region "$REGION"
+    aws lambda update-function-code --function-name "$LAMBDA_NAME" --zip-file fileb://lambda_deploy.zip --region "$AWS_REGION"
+    aws lambda wait function-updated-v2 --function-name "$LAMBDA_NAME" --region "$AWS_REGION"
 fi
 
-aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --region "$REGION" --environment "Variables={DYNAMODB_TABLE=$TABLE_NAME}"
-aws lambda wait function-updated-v2 --function-name "$LAMBDA_NAME" --region "$REGION"
+aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --environment "Variables={DYNAMODB_TABLE=$TABLE_NAME}" --region "$AWS_REGION"
 
-# --- CORRECAO: Pausa para propagacao de permissao SQS antes do mapeamento ---
-echo "Aguardando propagacao de permissoes SQS..."
-sleep 15
-
-MAPPING_UUID=$(aws lambda list-event-source-mappings --function-name "$LAMBDA_NAME" --region "$REGION" --query "EventSourceMappings[?EventSourceArn=='$SQS_ARN'].UUID" --output text)
-if [ -z "$MAPPING_UUID" ] || [ "$MAPPING_UUID" == "None" ]; then
-    # Retry loop para o mapeamento
-    for i in {1..3}; do
-        aws lambda create-event-source-mapping --function-name "$LAMBDA_NAME" --event-source-arn "$SQS_ARN" --batch-size 1 --region "$REGION" && break || { echo "Tentando novamente em 10s..."; sleep 10; }
-    done
+# === SQS -> Lambda Event Source Mapping ===
+if ! aws lambda list-event-source-mappings --function-name "$LAMBDA_NAME" --event-source-arn "$QUEUE_ARN" --region "$AWS_REGION" --query "EventSourceMappings[0]" --output text >/dev/null 2>&1; then
+    aws lambda create-event-source-mapping --function-name "$LAMBDA_NAME" --batch-size 5 --event-source-arn "$QUEUE_ARN" --region "$AWS_REGION"
 fi
 
-# 5. EventBridge Rule
-aws events put-rule --name "$RULE_NAME" --event-bus-name "$BUS_NAME" --event-pattern "{\"source\": [\"app.orders.validation\"], \"detail-type\": [\"NovoPedidoValidado\"]}" --region "$REGION"
-aws events put-targets --rule "$RULE_NAME" --event-bus-name "$BUS_NAME" --targets "Id"="TargetSQS","Arn"="$SQS_ARN" --region "$REGION"
-aws sqs set-queue-attributes --queue-url "$SQS_URL" --region "$REGION" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"SQS:SendMessage\\\",\\\"Resource\\\":\\\"$SQS_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:aws:events:$REGION:$ACCOUNT_ID:rule/$BUS_NAME/$RULE_NAME\\\"}}}]}\"}"
-
-rm -f processor_lambda.zip
+rm -f lambda_deploy.zip

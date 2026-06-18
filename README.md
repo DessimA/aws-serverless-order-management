@@ -100,7 +100,7 @@ Atua como o sistema nervoso central da arquitetura. Ele recebe eventos de ambas 
 
 ### 4.4. Camada de Persistência e Ciclo de Vida
 As Lambdas de processamento final são acionadas por filas SQS que atuam como buffers de carga.
-*   **Order Processor:** Cria o registro inicial na tabela `orders-production-db` com `ConditionExpression: attribute_not_exists(orderId)` para impedir sobrescrita de pedidos duplicados.
+*   **Order Processor:** Cria o registro inicial na tabela `order-production-data` com `ConditionExpression: attribute_not_exists(orderId)` para impedir sobrescrita de pedidos duplicados.
 *   **Update Processor:** Atualiza itens de pedidos existentes utilizando `UpdateExpression` e `ConditionExpression: attribute_exists(orderId)` para garantir que o pedido existe antes de alterá-lo.
 *   **Cancel Processor:** Altera o status do pedido para `CANCELLED` com `ConditionExpression: attribute_exists(orderId)`, prevenindo criação de registros fantasmas.
 
@@ -222,7 +222,7 @@ curl -k -X POST <URL_DO_ENDPOINT>/prod/orders \
 ### 10.2. Teste de Ingestão via S3 (Batch)
 Faça o upload de um arquivo JSON para o bucket de Drop Zone:
 ```bash
-aws s3 cp samples/valid_batch.json s3://order-drop-zone-<seu-sufixo>/
+aws s3 cp samples/valid_batch.json s3://order-files-bucket-<seu-sufixo>/
 ```
 
 ### 10.3. Teste de Operações de Ciclo de Vida
@@ -230,9 +230,9 @@ Simule eventos de alteração ou cancelamento diretamente no EventBridge:
 ```bash
 aws events put-events --entries "[{
     \"Source\": \"app.orders.operations\",
-    \"DetailType\": \"AlterarPedido\",
+    \"DetailType\": \"OrderUpdated\",
     \"Detail\": \"{\\\"pedidoId\\\": \\\"ORD-001\\\", \\\"novosItens\\\": [{\\\"sku\\\": \\\"PROD-B\\\", \\\"qtd\\\": 2}]}\",
-    \"EventBusName\": \"pedidos-event-bus-<seu-sufixo>\"
+    \"EventBusName\": \"orders-event-bus-<seu-sufixo>\"
 }]"
 ```
 
@@ -278,7 +278,7 @@ O sistema atualmente não possui uma interface gráfica para o usuário final. A
 - Consulta de pedidos por ID via uma nova API GET `/orders/{orderId}`.
 
 ### 13.2. Lambda de Leitura (`read_order`)
-- Nova função Lambda para consultar pedidos na tabela `orders-production-db` via `GetItem`.
+- Nova função Lambda para consultar pedidos na tabela `order-production-data` via `GetItem`.
 - Respostas com headers CORS para integração com o frontend.
 
 ### 13.3. API Gateway Separado para Leitura

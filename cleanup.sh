@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/scripts/lib.sh"
@@ -7,128 +7,98 @@ source "$SCRIPT_DIR/scripts/lib.sh"
 load_env "$SCRIPT_DIR/.env"
 validate_env "RESOURCE_SUFFIX" "AWS_REGION"
 
-SUFFIX=$RESOURCE_SUFFIX
-REGION=$AWS_REGION
+echo "=== INICIANDO LIMPEZA PARA SUFFIX: $RESOURCE_SUFFIX ==="
+
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-echo "--------------------------------------------------------"
-echo "RESUMO PARA LIMPEZA DE RECURSOS"
-echo "--------------------------------------------------------"
-echo "Identificador (Suffix): $SUFFIX"
-echo "Regiao AWS:             $REGION"
-echo "ID da Conta:            $ACCOUNT_ID"
-echo "--------------------------------------------------------"
-echo "AVISO: Apenas recursos contendo '$SUFFIX' no nome serao removidos."
-echo "--------------------------------------------------------"
-read -p "Os dados acima estao corretos? (y/n): " confirm
-
-if [ "$confirm" != "y" ]; then
-    echo "Operacao cancelada pelo usuario."
-    exit 0
+# === S3 Bucket (empty + delete) ===
+S3_BUCKET="order-files-bucket-${RESOURCE_SUFFIX}"
+if aws s3api head-bucket --bucket "$S3_BUCKET" --region "$AWS_REGION" 2>/dev/null; then
+    aws s3 rm "s3://${S3_BUCKET}" --recursive --region "$AWS_REGION" 2>/dev/null || true
+    aws s3api delete-bucket --bucket "$S3_BUCKET" --region "$AWS_REGION" || true
+    echo "S3 bucket deleted: $S3_BUCKET"
 fi
 
-echo "Iniciando limpeza..."
-
-BUS_NAME="pedidos-event-bus-$SUFFIX"
-if aws events describe-event-bus --name "$BUS_NAME" --region "$REGION" >/dev/null 2>&1; then
-    RULES=$(aws events list-rules --event-bus-name "$BUS_NAME" --query "Rules[*].Name" --output text --region "$REGION")
-    for rule in $RULES; do
-        if [ "$rule" != "None" ] && [ -n "$rule" ]; then
-            TARGETS=$(aws events list-targets-by-rule --rule "$rule" --event-bus-name "$BUS_NAME" --query "Targets[*].Id" --output text --region "$REGION")
-            if [ "$TARGETS" != "None" ] && [ -n "$TARGETS" ]; then
-                # shellcheck disable=SC2086
-                aws events remove-targets --rule "$rule" --event-bus-name "$BUS_NAME" --ids $TARGETS --region "$REGION"
+# === Event Bus ===
+BUS_NAME="orders-event-bus-${RESOURCE_SUFFIX}"
+if aws events describe-event-bus --name "$BUS_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+    # Must remove all rules+targets before deleting bus
+    for rule in $(aws events list-rules --event-bus-name "$BUS_NAME" --region "$AWS_REGION" --query "Rules[].Name" --output text); do
+        TARGET_ARNS=$(aws events list-targets-by-rule --rule "$rule" --event-bus-name "$BUS_NAME" --region "$AWS_REGION" --query "Targets[].Arn" --output text 2>/dev/null || true)
+        if [ -n "$TARGET_ARNS" ]; then
+            TARGET_IDS=$(aws events list-targets-by-rule --rule "$rule" --event-bus-name "$BUS_NAME" --region "$AWS_REGION" --query "Targets[].Id" --output text 2>/dev/null || true)
+            if [ -n "$TARGET_IDS" ]; then
+                aws events remove-targets --rule "$rule" --event-bus-name "$BUS_NAME" --ids $TARGET_IDS --region "$AWS_REGION" 2>/dev/null || true
             fi
-            aws events delete-rule --name "$rule" --event-bus-name "$BUS_NAME" --region "$REGION"
+        fi
+        aws events delete-rule --name "$rule" --event-bus-name "$BUS_NAME" --region "$AWS_REGION" 2>/dev/null || true
+    done
+    aws events delete-event-bus --name "$BUS_NAME" --region "$AWS_REGION" || true
+    echo "Event bus deleted: $BUS_NAME"
+fi
+
+# === Lambda Functions ===
+for name in "order-persister-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-${RESOURCE_SUFFIX}" "order-lifecycle-update-${RESOURCE_SUFFIX}" "order-file-validator-${RESOURCE_SUFFIX}" "order-pre-validator-${RESOURCE_SUFFIX}" "order-validator-${RESOURCE_SUFFIX}"; do
+    if aws lambda get-function --function-name "$name" --region "$AWS_REGION" >/dev/null 2>&1; then
+        REMAINING_LAMBDAS=$(aws lambda list-event-source-mappings --function-name "$name" --region "$AWS_REGION" --query "EventSourceMappings[].UUID" --output text 2>/dev/null || true)
+        for UUID in $REMAINING_LAMBDAS; do
+            aws lambda delete-event-source-mapping --uuid "$UUID" --region "$AWS_REGION" 2>/dev/null || true
+        done
+        aws lambda delete-function --function-name "$name" --region "$AWS_REGION" || true
+        echo "Lambda deleted: $name"
+    fi
+done
+
+# === IAM Roles ===
+for suffix in "order-pre-validator-role-${RESOURCE_SUFFIX}" "order-validator-role-${RESOURCE_SUFFIX}" "order-file-validator-role-${RESOURCE_SUFFIX}" "order-persister-role-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-role-${RESOURCE_SUFFIX}" "order-lifecycle-update-role-${RESOURCE_SUFFIX}"; do
+    ROLE_NAME="$suffix"
+    if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+        ATTACHED_POLICIES=$(aws iam list-attached-role-policies --role-name "$ROLE_NAME" --query "AttachedPolicies[].PolicyArn" --output text 2>/dev/null || true)
+        for policy_arn in $ATTACHED_POLICIES; do
+            aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "$policy_arn" 2>/dev/null || true
+        done
+        INLINE_POLICY_NAMES=$(aws iam list-role-policies --role-name "$ROLE_NAME" --query "PolicyNames" --output text 2>/dev/null || true)
+        for policy_name in $INLINE_POLICY_NAMES; do
+            aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "$policy_name" 2>/dev/null || true
+        done
+        aws iam delete-role --role-name "$ROLE_NAME" 2>/dev/null || true
+        echo "IAM Role deleted: $ROLE_NAME"
+    fi
+done
+
+# === SQS Queues ===
+for name in "order-persister-queue" "order-persister-dlq" "order-validation-buffer" "order-validation-dlq" "order-s3-batch-queue" "order-s3-batch-dlq" "cancel-order-queue" "cancel-order-dlq" "update-order-queue" "update-order-dlq"; do
+    for suffix in "" ".fifo"; do
+        QUEUE_NAME="${name}-${RESOURCE_SUFFIX}${suffix}"
+        QUEUE_URL=$(aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text 2>/dev/null || true)
+        if [ -n "$QUEUE_URL" ] && [ "$QUEUE_URL" != "None" ]; then
+            aws sqs delete-queue --queue-url "$QUEUE_URL" --region "$AWS_REGION" 2>/dev/null || true
+            echo "SQS queue deleted: $QUEUE_NAME"
         fi
     done
-    aws events delete-event-bus --name "$BUS_NAME" --region "$REGION"
+done
+
+# === DynamoDB Tables ===
+for name in "order-production-data-${RESOURCE_SUFFIX}" "order-batch-audit-${RESOURCE_SUFFIX}"; do
+    if aws dynamodb describe-table --table-name "$name" --region "$AWS_REGION" >/dev/null 2>&1; then
+        aws dynamodb delete-table --table-name "$name" --region "$AWS_REGION" || true
+        echo "DynamoDB table deleted: $name"
+    fi
+done
+
+# === API Gateway ===
+API_ID=$(aws apigateway get-rest-apis --region "$AWS_REGION" --query "items[?name=='order-ingestion-api-${RESOURCE_SUFFIX}'].id" --output text 2>/dev/null || true)
+if [ -n "$API_ID" ] && [ "$API_ID" != "None" ]; then
+    aws apigateway delete-rest-api --rest-api-id "$API_ID" --region "$AWS_REGION" || true
+    echo "API Gateway deleted: order-ingestion-api-${RESOURCE_SUFFIX}"
 fi
-sleep 2
 
-API_IDS=$(aws apigateway get-rest-apis --query "items[?contains(name, '$SUFFIX')].id" --output text --region "$REGION")
-for id in $API_IDS; do
-    if [ "$id" != "None" ] && [ -n "$id" ]; then
-        aws apigateway delete-rest-api --rest-api-id "$id" --region "$REGION"
-    fi
-done
-sleep 2
+# === SNS Topic ===
+TOPIC_ARN=$(aws sns list-topics --region "$AWS_REGION" --query "Topics[?contains(TopicArn, 'order-notifications-${RESOURCE_SUFFIX}')].TopicArn" --output text 2>/dev/null || true)
+if [ -n "$TOPIC_ARN" ] && [ "$TOPIC_ARN" != "None" ]; then
+    aws sns delete-topic --topic-arn "$TOPIC_ARN" --region "$AWS_REGION" || true
+    echo "SNS topic deleted: order-notifications-${RESOURCE_SUFFIX}"
+fi
 
-FUNCTIONS=$(aws lambda list-functions --query "Functions[?contains(FunctionName, '$SUFFIX')].FunctionName" --output text --region "$REGION")
-for func in $FUNCTIONS; do
-    if [ "$func" != "None" ] && [ -n "$func" ]; then
-        MAPS=$(aws lambda list-event-source-mappings --function-name "$func" --query "EventSourceMappings[*].UUID" --output text --region "$REGION")
-        for uuid in $MAPS; do
-            if [ "$uuid" != "None" ] && [ -n "$uuid" ]; then
-                aws lambda delete-event-source-mapping --uuid "$uuid" --region "$REGION"
-            fi
-        done
-        aws lambda delete-function --function-name "$func" --region "$REGION"
-    fi
-done
-sleep 2
-
-QUEUES=$(aws sqs list-queues --region "$REGION" --query "QueueUrls[?contains(@, '$SUFFIX')]" --output text)
-for q in $QUEUES; do
-    if [ "$q" != "None" ] && [ -n "$q" ]; then
-        aws sqs delete-queue --queue-url "$q" --region "$REGION"
-    fi
-done
-sleep 2
-
-TABLES=$(aws dynamodb list-tables --region "$REGION" --query "TableNames[?contains(@, '$SUFFIX')]" --output text)
-for table in $TABLES; do
-    if [ "$table" != "None" ] && [ -n "$table" ]; then
-        aws dynamodb delete-table --table-name "$table" --region "$REGION"
-    fi
-done
-sleep 2
-
-BUCKETS=("datalake-arquivos-$SUFFIX" "order-drop-zone-$SUFFIX")
-for bucket in "${BUCKETS[@]}"; do
-    if aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
-        aws s3 rm "s3://$bucket" --recursive --region "$REGION"
-        aws s3 rb "s3://$bucket" --force --region "$REGION"
-    fi
-done
-sleep 2
-
-TOPICS=$(aws sns list-topics --region "$REGION" --query "Topics[?contains(TopicArn, '$SUFFIX')].TopicArn" --output text)
-for topic in $TOPICS; do
-    if [ "$topic" != "None" ] && [ -n "$topic" ]; then
-        aws sns delete-topic --topic-arn "$topic" --region "$REGION"
-    fi
-done
-sleep 2
-
-ROLES=$(aws iam list-roles --query "Roles[?contains(RoleName, '$SUFFIX')].RoleName" --output text)
-for role in $ROLES; do
-    if [ "$role" != "None" ] && [ -n "$role" ]; then
-        POLS=$(aws iam list-attached-role-policies --role-name "$role" --query "AttachedPolicies[*].PolicyArn" --output text)
-        for p in $POLS; do
-            if [ "$p" != "None" ] && [ -n "$p" ]; then
-                aws iam detach-role-policy --role-name "$role" --policy-arn "$p"
-            fi
-        done
-        INLINE=$(aws iam list-role-policies --role-name "$role" --query "PolicyNames[*]" --output text)
-        for i in $INLINE; do
-            if [ "$i" != "None" ] && [ -n "$i" ]; then
-                aws iam delete-role-policy --role-name "$role" --policy-name "$i"
-            fi
-        done
-        aws iam delete-role --role-name "$role"
-    fi
-done
-
-echo "--------------------------------------------------------"
-echo "VALIDANDO EXCLUSAO"
-echo "--------------------------------------------------------"
-CHECK_LAMBDA=$(aws lambda list-functions --query "Functions[?contains(FunctionName, '$SUFFIX')].FunctionName" --output text --region "$REGION")
-if [ -z "$CHECK_LAMBDA" ]; then echo "Lambdas: OK"; else echo "PENDENTE: $CHECK_LAMBDA"; fi
-
-CHECK_SQS=$(aws sqs list-queues --region "$REGION" --query "QueueUrls[?contains(@, '$SUFFIX')]" --output text)
-if [ -z "$CHECK_SQS" ] || [ "$CHECK_SQS" == "None" ]; then echo "SQS: OK"; else echo "PENDENTE: $CHECK_SQS"; fi
-
-echo "--------------------------------------------------------"
-echo "Limpeza finalizada."
-echo "--------------------------------------------------------"
+echo ""
+echo "=== LIMPEZA CONCLUIDA PARA SUFFIX: $RESOURCE_SUFFIX ==="
