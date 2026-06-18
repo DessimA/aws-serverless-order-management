@@ -187,7 +187,7 @@ aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDE
     --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
 aws apigateway put-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" \
     --http-method OPTIONS --status-code 200 \
-    --response-parameters "method.response.header.Access-Control-Allow-Headers='*',method.response.header.Access-Control-Allow-Methods='OPTIONS,GET',method.response.header.Access-Control-Allow-Origin='*'" \
+    --response-parameters "method.response.header.Access-Control-Allow-Headers='*',method.response.header.Access-Control-Allow-Methods='*',method.response.header.Access-Control-Allow-Origin='*'" \
     --region "$AWS_REGION"
 
 # Lambda permission for API Gateway → read_order
@@ -234,7 +234,7 @@ aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$TEST
     --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
 aws apigateway put-integration-response --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
     --http-method OPTIONS --status-code 200 \
-    --response-parameters "method.response.header.Access-Control-Allow-Headers='*',method.response.header.Access-Control-Allow-Methods='OPTIONS,POST',method.response.header.Access-Control-Allow-Origin='*'" \
+    --response-parameters "method.response.header.Access-Control-Allow-Headers='*',method.response.header.Access-Control-Allow-Methods='*',method.response.header.Access-Control-Allow-Origin='*'" \
     --region "$AWS_REGION"
 
 # Lambda permission for API Gateway → test_controller
