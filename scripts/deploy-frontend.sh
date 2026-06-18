@@ -189,10 +189,7 @@ aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDE
     --http-method OPTIONS --type MOCK \
     --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
 aws apigateway get-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
-aws apigateway put-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" \
-    --http-method OPTIONS --status-code 200 \
-    --response-parameters "method.response.header.Access-Control-Allow-Headers='*',method.response.header.Access-Control-Allow-Methods='*',method.response.header.Access-Control-Allow-Origin='*'" \
-    --region "$AWS_REGION"
+put_integration_response_cors "$REST_API_ID" "$ORDER_ID_RESOURCE_ID" "$AWS_REGION"
 
 # Lambda permission for API Gateway → read_order
 # Remove old permission first to handle REST API recreation (REST_API_ID may change)
@@ -240,10 +237,7 @@ aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$TEST
     --http-method OPTIONS --type MOCK \
     --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
 aws apigateway get-integration-response --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
-aws apigateway put-integration-response --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
-    --http-method OPTIONS --status-code 200 \
-    --response-parameters "method.response.header.Access-Control-Allow-Headers='*',method.response.header.Access-Control-Allow-Methods='*',method.response.header.Access-Control-Allow-Origin='*'" \
-    --region "$AWS_REGION"
+put_integration_response_cors "$REST_API_ID" "$TEST_RESOURCE_ID" "$AWS_REGION"
 
 # Lambda permission for API Gateway → test_controller
 aws lambda remove-permission --function-name "$CTRL_LAMBDA_NAME" --statement-id apigateway-ctrl \

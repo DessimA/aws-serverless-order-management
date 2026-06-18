@@ -149,9 +149,7 @@ aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDE
 aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --type MOCK \
     --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
 aws apigateway get-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
-aws apigateway put-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --status-code 200 \
-    --response-parameters "method.response.header.Access-Control-Allow-Headers='*',method.response.header.Access-Control-Allow-Methods='*',method.response.header.Access-Control-Allow-Origin='*'" \
-    --region "$AWS_REGION"
+put_integration_response_cors "$REST_API_ID" "$ORDERS_RESOURCE_ID" "$AWS_REGION"
 
 # POST integration → LambdaPre
 aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method POST --region "$AWS_REGION" >/dev/null 2>&1 || \

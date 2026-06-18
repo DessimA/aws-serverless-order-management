@@ -54,3 +54,22 @@ validate_env() {
         exit 1
     fi
 }
+
+put_integration_response_cors() {
+    local rest_api_id="$1"
+    local resource_id="$2"
+    local region="$3"
+    local tmpfile
+    tmpfile=$(mktemp)
+    cat > "$tmpfile" << 'EOF'
+{"method.response.header.Access-Control-Allow-Headers":"'*'","method.response.header.Access-Control-Allow-Methods":"'*'","method.response.header.Access-Control-Allow-Origin":"'*'"}
+EOF
+    aws apigateway put-integration-response \
+        --rest-api-id "$rest_api_id" \
+        --resource-id "$resource_id" \
+        --http-method OPTIONS \
+        --status-code 200 \
+        --response-parameters "file://${tmpfile}" \
+        --region "$region"
+    rm -f "$tmpfile"
+}
