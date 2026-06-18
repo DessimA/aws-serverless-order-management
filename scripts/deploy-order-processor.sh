@@ -51,7 +51,7 @@ aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "OrderProductionD
 
 # === EventBridge Rule -> SQS ===
 aws events put-rule --name "$EVENTBRIDGE_RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --event-pattern '{"source":["app.orders.validation"],"detail-type":["OrderValidated"]}' --region "$AWS_REGION"
-aws events put-targets --rule "$EVENTBRIDGE_RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --targets "Id"="1",Arn="$QUEUE_ARN","SqsParameters"="{\"MessageGroupId\":\"order-persister\"}" --region "$AWS_REGION"
+put_eventbridge_target "$EVENTBRIDGE_RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "order-persister" "$AWS_REGION"
 
 # SqS Queue Policy for EventBridge
 aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"$QUEUE_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:aws:events:$AWS_REGION:$ACCOUNT_ID:rule/$EVENT_BUS_NAME/$EVENTBRIDGE_RULE_NAME\\\"}}}]}\"}" --region "$AWS_REGION"

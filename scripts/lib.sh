@@ -73,3 +73,26 @@ EOF
         --region "$region"
     rm -f "$tmpfile"
 }
+
+put_eventbridge_target() {
+    local rule_name="$1"
+    local event_bus_name="$2"
+    local queue_arn="$3"
+    local message_group_id="$4"
+    local region="$5"
+    local tmpfile
+    tmpfile=$(mktemp)
+    cat > "$tmpfile" << EOF
+[
+  {
+    "Id": "1",
+    "Arn": "$queue_arn",
+    "SqsParameters": {
+      "MessageGroupId": "$message_group_id"
+    }
+  }
+]
+EOF
+    aws events put-targets --rule "$rule_name" --event-bus-name "$event_bus_name" --targets "file://${tmpfile}" --region "$region"
+    rm -f "$tmpfile"
+}

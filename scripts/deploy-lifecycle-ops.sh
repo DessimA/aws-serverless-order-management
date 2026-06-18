@@ -52,7 +52,7 @@ deploy_lifecycle_handler() {
 
     # ========== EventBridge Rule -> SQS ==========
     aws events put-rule --name "$RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --event-pattern "{\"source\":[\"app.orders.operations\"],\"detail-type\":[\"$DETAIL_TYPE\"]}" --region "$AWS_REGION"
-    aws events put-targets --rule "$RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --targets "Id"="1",Arn="$QUEUE_ARN","SqsParameters"="{\"MessageGroupId\":\"order-lifecycle-${OPERATION}\"}" --region "$AWS_REGION"
+    put_eventbridge_target "$RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "order-lifecycle-${OPERATION}" "$AWS_REGION"
 
     aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"$QUEUE_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:aws:events:$AWS_REGION:$ACCOUNT_ID:rule/$EVENT_BUS_NAME/$RULE_NAME\\\"}}}]}\"}" --region "$AWS_REGION"
 
