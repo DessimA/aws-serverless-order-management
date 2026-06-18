@@ -168,6 +168,7 @@ if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$ORDE
         --http-method GET --authorization-type "NONE" --request-parameters "method.request.path.orderId=true" --region "$AWS_REGION"
 fi
 
+aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" --http-method GET --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" \
     --http-method GET --type AWS_PROXY --integration-http-method POST \
     --uri "arn:aws:apigateway:$AWS_REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$AWS_REGION:$ACCOUNT_ID:function:$READER_LAMBDA_NAME/invocations" \
@@ -178,13 +179,16 @@ if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$ORDE
     aws apigateway put-method --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" \
         --http-method OPTIONS --authorization-type "NONE" --region "$AWS_REGION"
 fi
+aws apigateway get-method-response --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-method-response --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" \
     --http-method OPTIONS --status-code 200 \
     --response-parameters "method.response.header.Access-Control-Allow-Headers=true,method.response.header.Access-Control-Allow-Methods=true,method.response.header.Access-Control-Allow-Origin=true" \
     --region "$AWS_REGION"
+aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" --http-method OPTIONS --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" \
     --http-method OPTIONS --type MOCK \
     --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
+aws apigateway get-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" \
     --http-method OPTIONS --status-code 200 \
     --response-parameters "method.response.header.Access-Control-Allow-Headers='*',method.response.header.Access-Control-Allow-Methods='*',method.response.header.Access-Control-Allow-Origin='*'" \
@@ -215,6 +219,7 @@ if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$TEST
         --http-method POST --authorization-type "NONE" --region "$AWS_REGION"
 fi
 
+aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method POST --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
     --http-method POST --type AWS_PROXY --integration-http-method POST \
     --uri "arn:aws:apigateway:$AWS_REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$AWS_REGION:$ACCOUNT_ID:function:$CTRL_LAMBDA_NAME/invocations" \
@@ -225,13 +230,16 @@ if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$TEST
     aws apigateway put-method --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
         --http-method OPTIONS --authorization-type "NONE" --region "$AWS_REGION"
 fi
+aws apigateway get-method-response --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-method-response --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
     --http-method OPTIONS --status-code 200 \
     --response-parameters "method.response.header.Access-Control-Allow-Headers=true,method.response.header.Access-Control-Allow-Methods=true,method.response.header.Access-Control-Allow-Origin=true" \
     --region "$AWS_REGION"
+aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method OPTIONS --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
     --http-method OPTIONS --type MOCK \
     --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
+aws apigateway get-integration-response --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-integration-response --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
     --http-method OPTIONS --status-code 200 \
     --response-parameters "method.response.header.Access-Control-Allow-Headers='*',method.response.header.Access-Control-Allow-Methods='*',method.response.header.Access-Control-Allow-Origin='*'" \

@@ -141,16 +141,20 @@ fi
 if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --region "$AWS_REGION" >/dev/null 2>&1; then
     aws apigateway put-method --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --authorization-type "NONE" --region "$AWS_REGION"
 fi
+aws apigateway get-method-response --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-method-response --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --status-code 200 \
     --response-parameters "method.response.header.Access-Control-Allow-Headers=true,method.response.header.Access-Control-Allow-Methods=true,method.response.header.Access-Control-Allow-Origin=true" \
     --region "$AWS_REGION"
+aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --type MOCK \
     --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
+aws apigateway get-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --status-code 200 \
     --response-parameters "method.response.header.Access-Control-Allow-Headers='*',method.response.header.Access-Control-Allow-Methods='*',method.response.header.Access-Control-Allow-Origin='*'" \
     --region "$AWS_REGION"
 
 # POST integration → LambdaPre
+aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method POST --region "$AWS_REGION" >/dev/null 2>&1 || \
 aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method POST --type AWS_PROXY --integration-http-method POST --uri "arn:aws:apigateway:$AWS_REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$AWS_REGION:$ACCOUNT_ID:function:$PRE_LAMBDA_NAME/invocations" --region "$AWS_REGION"
 if ! aws lambda get-policy --function-name "$PRE_LAMBDA_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
     aws lambda add-permission --function-name "$PRE_LAMBDA_NAME" --statement-id apigateway --action lambda:InvokeFunction --principal apigateway.amazonaws.com --source-arn "arn:aws:execute-api:$AWS_REGION:$ACCOUNT_ID:$REST_API_ID/*" --region "$AWS_REGION"
