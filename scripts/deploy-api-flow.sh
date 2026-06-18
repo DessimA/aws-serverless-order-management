@@ -44,8 +44,8 @@ SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGIO
 if ! aws iam get-role --role-name "$PRE_ROLE_NAME" >/dev/null 2>&1; then
     aws iam create-role --role-name "$PRE_ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
     aws iam attach-role-policy --role-name "$PRE_ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-    wait_for_iam_role "$PRE_ROLE_NAME"
 fi
+wait_for_iam_role "$PRE_ROLE_NAME"
 
 # === SQS FIFO Queues for API buffer ===
 if ! aws sqs get-queue-url --queue-name "$VALIDATION_DLQ" --region "$AWS_REGION" >/dev/null 2>&1; then
@@ -90,8 +90,8 @@ rm -f lambda_deploy_pre.zip
 if ! aws iam get-role --role-name "$VAL_ROLE_NAME" >/dev/null 2>&1; then
     aws iam create-role --role-name "$VAL_ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
     aws iam attach-role-policy --role-name "$VAL_ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-    wait_for_iam_role "$VAL_ROLE_NAME"
 fi
+wait_for_iam_role "$VAL_ROLE_NAME"
 aws iam put-role-policy --role-name "$VAL_ROLE_NAME" --policy-name "ValidatorAccess" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"events:PutEvents\",\"Resource\":\"$EVENT_BUS_ARN\"},{\"Effect\":\"Allow\",\"Action\":\"sns:Publish\",\"Resource\":\"$SNS_TOPIC_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$VALIDATION_BUFFER_ARN\"}]}"
 
 # === Deploy LambdaVal ===

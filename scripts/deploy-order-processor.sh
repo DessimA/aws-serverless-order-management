@@ -30,8 +30,8 @@ PRODUCTION_TABLE_ARN=$(aws dynamodb describe-table --table-name "$TABLE_NAME" --
 if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
     aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
     aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-    wait_for_iam_role "$ROLE_NAME"
 fi
+wait_for_iam_role "$ROLE_NAME"
 
 # === SQS Queues ===
 if ! aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then

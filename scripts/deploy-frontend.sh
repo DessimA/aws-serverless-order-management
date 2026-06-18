@@ -51,6 +51,10 @@ aws s3api put-bucket-website --bucket "$FRONTEND_BUCKET" --website-configuration
     "ErrorDocument": {"Key": "index.html"}
 }' --region "$AWS_REGION"
 
+aws s3api put-public-access-block --bucket "$FRONTEND_BUCKET" \
+    --public-access-block-configuration "BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false" \
+    --region "$AWS_REGION"
+
 aws s3api put-bucket-policy --bucket "$FRONTEND_BUCKET" --policy "{
     \"Version\": \"2012-10-17\",
     \"Statement\": [{
@@ -71,8 +75,8 @@ for info in "$READER_ROLE_NAME|$READER_LAMBDA_NAME|reader" "$CTRL_ROLE_NAME|$CTR
     if ! aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
         aws iam create-role --role-name "$role_name" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
         aws iam attach-role-policy --role-name "$role_name" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-        wait_for_iam_role "$role_name"
     fi
+    wait_for_iam_role "$role_name"
 
     if [ "$role_type" == "reader" ]; then
         aws iam put-role-policy --role-name "$role_name" --policy-name "ReaderDynamoDBAccess" --policy-document "{

@@ -56,8 +56,8 @@ fi
 if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
     aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
     aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-    wait_for_iam_role "$ROLE_NAME"
 fi
+wait_for_iam_role "$ROLE_NAME"
 aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "FileValidatorAccess" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\"],\"Resource\":\"arn:aws:s3:::$BUCKET_NAME/*\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$S3_EVENT_QUEUE_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"dynamodb:PutItem\"],\"Resource\":\"arn:aws:dynamodb:$AWS_REGION:$ACCOUNT_ID:table/$AUDIT_TABLE_NAME\"},{\"Effect\":\"Allow\",\"Action\":\"sns:Publish\",\"Resource\":\"arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME\"}]}"
 
 # === S3 → SQS Notification ===
