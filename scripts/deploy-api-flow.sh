@@ -54,10 +54,11 @@ fi
 VALIDATION_DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$VALIDATION_DLQ" --region "$AWS_REGION" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
 
 if ! aws sqs get-queue-url --queue-name "$VALIDATION_BUFFER_QUEUE" --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws sqs create-queue --queue-name "$VALIDATION_BUFFER_QUEUE" --attributes "{\"FifoQueue\":\"true\",\"ContentBasedDeduplication\":\"true\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$VALIDATION_DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
+    aws sqs create-queue --queue-name "$VALIDATION_BUFFER_QUEUE" --attributes "{\"FifoQueue\":\"true\",\"ContentBasedDeduplication\":\"true\",\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$VALIDATION_DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
 fi
 VALIDATION_BUFFER_URL=$(aws sqs get-queue-url --queue-name "$VALIDATION_BUFFER_QUEUE" --region "$AWS_REGION" --query QueueUrl --output text)
 VALIDATION_BUFFER_ARN=$(aws sqs get-queue-attributes --queue-url "$VALIDATION_BUFFER_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
+aws sqs set-queue-attributes --queue-url "$VALIDATION_BUFFER_URL" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$AWS_REGION"
 wait_for_sqs_queue "$VALIDATION_BUFFER_QUEUE" "$AWS_REGION"
 
 # Inline policy for LambdaPre: sqs:SendMessage
@@ -71,7 +72,7 @@ cd ../../scripts
 if ! aws lambda get-function --function-name "$PRE_LAMBDA_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
     echo "Criando Lambda $PRE_LAMBDA_NAME..."
     for i in {1..3}; do
-        aws lambda create-function --function-name "$PRE_LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$PRE_ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy_pre.zip --region "$AWS_REGION" && break || sleep 10
+        aws lambda create-function --function-name "$PRE_LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$PRE_ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy_pre.zip --timeout 60 --region "$AWS_REGION" && break || sleep 10
     done
     aws lambda wait function-active-v2 --function-name "$PRE_LAMBDA_NAME" --region "$AWS_REGION"
 else
@@ -79,7 +80,7 @@ else
     aws lambda wait function-updated-v2 --function-name "$PRE_LAMBDA_NAME" --region "$AWS_REGION"
 fi
 
-aws lambda update-function-configuration --function-name "$PRE_LAMBDA_NAME" --environment "Variables={SQS_QUEUE_URL=$VALIDATION_BUFFER_URL}" --region "$AWS_REGION"
+aws lambda update-function-configuration --function-name "$PRE_LAMBDA_NAME" --timeout 60 --environment "Variables={SQS_QUEUE_URL=$VALIDATION_BUFFER_URL}" --region "$AWS_REGION"
 rm -f lambda_deploy_pre.zip
 
 # ================================================================
@@ -102,7 +103,7 @@ cd ../../scripts
 if ! aws lambda get-function --function-name "$VAL_LAMBDA_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
     echo "Criando Lambda $VAL_LAMBDA_NAME..."
     for i in {1..3}; do
-        aws lambda create-function --function-name "$VAL_LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$VAL_ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy_val.zip --region "$AWS_REGION" && break || sleep 10
+        aws lambda create-function --function-name "$VAL_LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$VAL_ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy_val.zip --timeout 60 --region "$AWS_REGION" && break || sleep 10
     done
     aws lambda wait function-active-v2 --function-name "$VAL_LAMBDA_NAME" --region "$AWS_REGION"
 else
@@ -110,7 +111,7 @@ else
     aws lambda wait function-updated-v2 --function-name "$VAL_LAMBDA_NAME" --region "$AWS_REGION"
 fi
 
-aws lambda update-function-configuration --function-name "$VAL_LAMBDA_NAME" --environment "Variables={EVENT_BUS_NAME=$EVENT_BUS_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN}" --region "$AWS_REGION"
+aws lambda update-function-configuration --function-name "$VAL_LAMBDA_NAME" --timeout 60 --environment "Variables={EVENT_BUS_NAME=$EVENT_BUS_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN}" --region "$AWS_REGION"
 rm -f lambda_deploy_val.zip
 
 # === SQS FIFO → LambdaVal event source mapping ===

@@ -40,10 +40,12 @@ fi
 DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
 
 if ! aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws sqs create-queue --queue-name "$QUEUE_NAME" --attributes "{\"FifoQueue\":\"true\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
+    aws sqs create-queue --queue-name "$QUEUE_NAME" --attributes "{\"FifoQueue\":\"true\",\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
 fi
+local QUEUE_URL QUEUE_ARN
 QUEUE_URL=$(aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text)
 QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$QUEUE_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
+aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$AWS_REGION"
 wait_for_sqs_queue "$QUEUE_NAME" "$AWS_REGION"
 
 # Inline policy (must be after QUEUE_ARN is resolved)
@@ -64,7 +66,7 @@ cd ../../scripts
 if ! aws lambda get-function --function-name "$LAMBDA_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
     echo "Criando funcao Lambda $LAMBDA_NAME..."
     for i in {1..3}; do
-        aws lambda create-function --function-name "$LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy.zip --region "$AWS_REGION" && break || sleep 10
+        aws lambda create-function --function-name "$LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy.zip --timeout 60 --region "$AWS_REGION" && break || sleep 10
     done
     aws lambda wait function-active-v2 --function-name "$LAMBDA_NAME" --region "$AWS_REGION"
 else
@@ -72,7 +74,7 @@ else
     aws lambda wait function-updated-v2 --function-name "$LAMBDA_NAME" --region "$AWS_REGION"
 fi
 
-aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --environment "Variables={DYNAMODB_TABLE=$TABLE_NAME}" --region "$AWS_REGION"
+aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --timeout 60 --environment "Variables={DYNAMODB_TABLE=$TABLE_NAME}" --region "$AWS_REGION"
 
 # === SQS -> Lambda Event Source Mapping ===
 if ! aws lambda list-event-source-mappings --function-name "$LAMBDA_NAME" --event-source-arn "$QUEUE_ARN" --region "$AWS_REGION" --query "EventSourceMappings[0]" --output text >/dev/null 2>&1; then

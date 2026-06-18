@@ -114,7 +114,7 @@ deploy_lambda() {
         for i in {1..3}; do
             aws lambda create-function --function-name "$lambda_name" --runtime python3.12 \
                 --role "arn:aws:iam::$ACCOUNT_ID:role/$role_name" \
-                --handler "$handler" --zip-file "fileb://$zip_name" --region "$AWS_REGION" && break || sleep 10
+                --handler "$handler" --zip-file "fileb://$zip_name" --timeout 60 --region "$AWS_REGION" && break || sleep 10
         done
         aws lambda wait function-active-v2 --function-name "$lambda_name" --region "$AWS_REGION"
     else
@@ -127,11 +127,11 @@ deploy_lambda() {
 
 deploy_lambda "$READER_LAMBDA_NAME" "$READER_ROLE_NAME" "../src/read_order" "index.lambda_handler" "lambda_deploy_reader.zip"
 aws lambda update-function-configuration --function-name "$READER_LAMBDA_NAME" \
-    --environment "Variables={DYNAMODB_TABLE=$PRODUCTION_TABLE}" --region "$AWS_REGION"
+    --timeout 60 --environment "Variables={DYNAMODB_TABLE=$PRODUCTION_TABLE}" --region "$AWS_REGION"
 
 deploy_lambda "$CTRL_LAMBDA_NAME" "$CTRL_ROLE_NAME" "../src/test_controller" "index.lambda_handler" "lambda_deploy_ctrl.zip"
 aws lambda update-function-configuration --function-name "$CTRL_LAMBDA_NAME" \
-    --environment "Variables={EVENT_BUS_NAME=$EVENT_BUS_NAME,S3_BUCKET=$S3_BUCKET}" --region "$AWS_REGION"
+    --timeout 60 --environment "Variables={EVENT_BUS_NAME=$EVENT_BUS_NAME,S3_BUCKET=$S3_BUCKET}" --region "$AWS_REGION"
 
 # ================================================================
 # API GATEWAY — ADD NEW RESOURCES

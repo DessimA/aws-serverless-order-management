@@ -32,10 +32,11 @@ fi
 DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
 
 if ! aws sqs get-queue-url --queue-name "$S3_EVENT_QUEUE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws sqs create-queue --queue-name "$S3_EVENT_QUEUE_NAME" --attributes "{\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
+    aws sqs create-queue --queue-name "$S3_EVENT_QUEUE_NAME" --attributes "{\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
 fi
 S3_EVENT_QUEUE_URL=$(aws sqs get-queue-url --queue-name "$S3_EVENT_QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text)
 S3_EVENT_QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$S3_EVENT_QUEUE_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
+aws sqs set-queue-attributes --queue-url "$S3_EVENT_QUEUE_URL" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$AWS_REGION"
 wait_for_sqs_queue "$S3_EVENT_QUEUE_NAME" "$AWS_REGION"
 
 # === DynamoDB Audit Table ===
@@ -74,7 +75,7 @@ cd ../../scripts
 if ! aws lambda get-function --function-name "$LAMBDA_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
     echo "Criando funcao Lambda $LAMBDA_NAME..."
     for i in {1..3}; do
-        aws lambda create-function --function-name "$LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy.zip --region "$AWS_REGION" && break || sleep 10
+        aws lambda create-function --function-name "$LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy.zip --timeout 60 --region "$AWS_REGION" && break || sleep 10
     done
     aws lambda wait function-active-v2 --function-name "$LAMBDA_NAME" --region "$AWS_REGION"
 else
@@ -83,7 +84,7 @@ else
 fi
 
 SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME" --query Attributes.TopicArn --output text --region "$AWS_REGION")
-aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --environment "Variables={DYNAMODB_TABLE=$AUDIT_TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN}" --region "$AWS_REGION"
+aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --timeout 60 --environment "Variables={DYNAMODB_TABLE=$AUDIT_TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN}" --region "$AWS_REGION"
 
 # === SQS → Lambda event source mapping ===
 EVENT_SOURCE_MAPPING_UUID=$(aws lambda list-event-source-mappings --function-name "$LAMBDA_NAME" --region "$AWS_REGION" --query "EventSourceMappings[0].UUID" --output text)
