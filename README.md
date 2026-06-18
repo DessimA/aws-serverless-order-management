@@ -38,6 +38,14 @@ graph LR
         G -- Error Alert --> Q[SNS Notifications]
     end
 
+    subgraph "Futuro: Frontend"
+        R[S3 Static Website]
+        R -- POST --> B
+        R -- GET --> S[Reader API Gateway]
+        S -- Proxy --> T{Lambda Order Reader}
+        T -- Query --> O
+    end
+
     %% Estilizacao para alto contraste (Fonte Branca)
     style A fill:#232F3E,stroke:#fff,color:#fff
     style B fill:#4A148C,stroke:#fff,color:#fff
@@ -56,6 +64,9 @@ graph LR
     style O fill:#0D47A1,stroke:#fff,color:#fff
     style P fill:#0D47A1,stroke:#fff,color:#fff
     style Q fill:#880E4F,stroke:#fff,color:#fff
+    style R fill:#1B5E20,stroke:#fff,stroke-dasharray: 5 5,color:#fff
+    style S fill:#4A148C,stroke:#fff,stroke-dasharray: 5 5,color:#fff
+    style T fill:#333399,stroke:#fff,stroke-dasharray: 5 5,color:#fff
 ```
 
 ## 3. Stack Tecnológica
@@ -89,9 +100,9 @@ Atua como o sistema nervoso central da arquitetura. Ele recebe eventos de ambas 
 
 ### 4.4. Camada de Persistência e Ciclo de Vida
 As Lambdas de processamento final são acionadas por filas SQS que atuam como buffers de carga.
-*   **Order Processor:** Cria o registro inicial na tabela `orders-production-db`.
-*   **Update Processor:** Realiza atualizações granulares em itens de pedidos existentes utilizando `UpdateExpression` do DynamoDB para garantir eficiência.
-*   **Cancel Processor:** Altera o status do pedido para `CANCELLED` e registra o timestamp da operação.
+*   **Order Processor:** Cria o registro inicial na tabela `orders-production-db` com `ConditionExpression: attribute_not_exists(orderId)` para impedir sobrescrita de pedidos duplicados.
+*   **Update Processor:** Atualiza itens de pedidos existentes utilizando `UpdateExpression` e `ConditionExpression: attribute_exists(orderId)` para garantir que o pedido existe antes de alterá-lo.
+*   **Cancel Processor:** Altera o status do pedido para `CANCELLED` com `ConditionExpression: attribute_exists(orderId)`, prevenindo criação de registros fantasmas.
 
 ## 5. Estrutura do Projeto
 
@@ -100,16 +111,23 @@ A organização do repositório segue padrões de modularidade para facilitar a 
 ```text
 aws-serverless-order-ingestion/
 ├── scripts/                    # Infraestrutura como Codigo (IaC) e Deploy
+│   ├── lib.sh                  # Funcoes utilitarias (wait IAM, validate env, load env)
 │   ├── deploy-api-flow.sh      # Provisiona API Gateway e Ingestao Sincrona
 │   ├── deploy-s3-flow.sh       # Provisiona S3, Auditoria e Alertas SNS
 │   ├── deploy-order-processor.sh # Provisiona o Processador Central
 │   ├── deploy-lifecycle-ops.sh # Provisiona fluxos de Alterar e Cancelar
+│   ├── deploy-frontend.sh      # (Planejado) Frontend S3 + API de consulta
 │   └── validate-flow.sh        # Script automatizado de testes E2E
 ├── src/                        # Codigo-fonte das funcoes AWS Lambda
 │   ├── api_validator/          # Logica de validacao e producao de eventos
 │   ├── batch_processor/        # Logica de extracao de arquivos e auditoria
 │   ├── order_processor/        # Persistencia do estado inicial do pedido
-│   └── lifecycle_ops/          # Operacoes de atualizacao e cancelamento
+│   ├── lifecycle_ops/          # Operacoes de atualizacao e cancelamento
+│   └── read_order/             # (Planejado) Leitura de pedidos para o frontend
+├── frontend/                   # (Planejado) Arquivos estaticos do frontend
+│   ├── index.html
+│   ├── style.css
+│   └── app.js
 ├── samples/                    # Exemplos de payloads para testes e integracao
 │   ├── api_request.json        # Modelo de requisicao para o API Gateway
 │   ├── valid_batch.json        # Modelo de arquivo para processamento S3
@@ -179,6 +197,14 @@ chmod +x run.sh
 5.  **Deploy Fase 4 (Lifecycle):** Configura as Lambdas de Alteração e Cancelamento e suas respectivas regras no EventBridge.
 6.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
 
+### Utilitários (scripts/lib.sh)
+Os scripts de deploy compartilham uma biblioteca de funções comum:
+- **`load_env`**: Carrega o `.env` de forma segura utilizando `set -a` + `source`.
+- **`validate_env`**: Valida que variáveis obrigatórias estão definidas antes de prosseguir.
+- **`wait_for_iam_role`**: Polling ativo (12 tentativas, 5s intervalo) que substitui `sleep` arbitrário, garantindo que a Role IAM esteja propagada antes de criar recursos dependentes.
+- **`wait_for_lambda_active`**: Aguarda a Lambda atingir o estado `Active`.
+- **`wait_for_sqs_queue`**: Aguarda a fila SQS ficar disponível após criação.
+
 ---
 
 ## 10. Guia de Testes e Validação
@@ -216,7 +242,7 @@ Durante o desenvolvimento e implantação em ambientes reais da AWS ou LocalStac
 
 ### 11.1. Atraso na Propagação de IAM (Eventual Consistency)
 **Problema:** O comando de criação da Lambda falha alegando que a Role não existe, mesmo após o comando de criação da Role ter retornado sucesso. </br>
-**Solução:** Implementação de comandos `sleep` e `aws lambda wait function-active` nos scripts de deploy para garantir que as permissões estejam replicadas globalmente antes do uso.
+**Solução:** Substituição de `sleep` fixo por polling ativo com `aws iam wait role-exists` (função `wait_for_iam_role` em `scripts/lib.sh`). O polling tenta a cada 5 segundos por até 60 segundos, garantindo que a propagação ocorreu sem desperdiçar tempo quando é mais rápida.
 
 ### 11.2. Erro de AccessDenied no S3 ou DynamoDB
 **Problema:** A Lambda é executada, mas falha ao tentar ler um arquivo no S3 ou gravar no DynamoDB. </br>
@@ -241,6 +267,39 @@ Durante o desenvolvimento e implantação em ambientes reais da AWS ou LocalStac
 Todas as filas SQS deste projeto (Ingestão, Processamento, Alteração e Cancelamento) possuem uma DLQ associada. 
 *   **Configuração:** `maxReceiveCount` definido como 3.
 *   **Funcionamento:** Se uma Lambda falhar repetidamente ao processar uma mensagem (devido a erros de código ou indisponibilidade de recursos externos), a mensagem é movida para a DLQ após a terceira tentativa. Isso evita o bloqueio da fila principal e permite a análise posterior do dado corrompido sem perda de informação.
+
+## 13. Próximos Passos (Frontend)
+
+O sistema atualmente não possui uma interface gráfica para o usuário final. As seguintes melhorias estão planejadas:
+
+### 13.1. Frontend via S3 Static Website
+- Criação de um bucket S3 com Static Website Hosting para servir arquivos HTML/CSS/JS.
+- Formulário de criação de pedidos que consome a API POST `/orders` existente.
+- Consulta de pedidos por ID via uma nova API GET `/orders/{orderId}`.
+
+### 13.2. Lambda de Leitura (`read_order`)
+- Nova função Lambda para consultar pedidos na tabela `orders-production-db` via `GetItem`.
+- Respostas com headers CORS para integração com o frontend.
+
+### 13.3. API Gateway Separado para Leitura
+- Novo REST API (`order-reader-api-{SUFFIX}`) com endpoint GET `/orders/{orderId}` e integração proxy Lambda.
+- Recurso OPTIONS configurado para CORS preflight.
+
+### 13.4. Script de Deploy (`deploy-frontend.sh`)
+- Criação/atualização do bucket S3 de frontend com política de leitura pública.
+- Upload dos arquivos estáticos com injeção das URLs das APIs via `sed`.
+- Provisionamento da Lambda de leitura e do API Gateway de consulta.
+- Integração ao pipeline do `run.sh`.
+
+### Arquitetura Planejada
+```
+[Browser] → S3 Static Website → POST /orders (API existente)
+                               → GET /orders/{id} (nova API)
+                                              ↓
+                                    Lambda read_order
+                                              ↓
+                                     DynamoDB Production
+```
 
 ---
 **Desenvolvido por [José Anderson](https://github.com/DessimA)**
