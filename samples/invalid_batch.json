@@ -1,0 +1,3 @@
+{
+  "wrong_key": "This will trigger an SNS alert"
+}

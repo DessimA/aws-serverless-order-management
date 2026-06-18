@@ -1,0 +1,10 @@
+{
+  "pedidoId": "ORD-1001-PRO",
+  "clienteId": "CLIENT-99",
+  "itens": [
+    {
+      "produto": "Cloud Practitioner Exam Voucher",
+      "quantidade": 1
+    }
+  ]
+}
