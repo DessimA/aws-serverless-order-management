@@ -77,7 +77,7 @@ if [ -z "$MAPPING_UUID" ] || [ "$MAPPING_UUID" == "None" ]; then
 fi
 
 # 5. EventBridge Rule
-aws events put-rule --name "$RULE_NAME" --event-bus-name "$BUS_NAME" --event-pattern "{\"source\": [\"lab.aula1.pedidos.validacao\"], \"detail-type\": [\"NovoPedidoValidado\"]}" --region "$REGION"
+aws events put-rule --name "$RULE_NAME" --event-bus-name "$BUS_NAME" --event-pattern "{\"source\": [\"app.orders.validation\"], \"detail-type\": [\"NovoPedidoValidado\"]}" --region "$REGION"
 aws events put-targets --rule "$RULE_NAME" --event-bus-name "$BUS_NAME" --targets "Id"="TargetSQS","Arn"="$SQS_ARN" --region "$REGION"
 aws sqs set-queue-attributes --queue-url "$SQS_URL" --region "$REGION" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"SQS:SendMessage\\\",\\\"Resource\\\":\\\"$SQS_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:aws:events:$REGION:$ACCOUNT_ID:rule/$BUS_NAME/$RULE_NAME\\\"}}}]}\"}"
 

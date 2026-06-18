@@ -28,7 +28,7 @@ sleep 10
 # 2. Teste de Alteracao
 echo "Sending Update Event for $ORDER_ID..."
 aws events put-events --region "$REGION" --entries "[{
-    \"Source\": \"lab.aula4.operacoes\",
+    \"Source\": \"app.orders.operations\",
     \"DetailType\": \"AlterarPedido\",
     \"Detail\": \"{\\\"pedidoId\\\": \\\"$ORDER_ID\\\", \\\"novosItens\\\": [{\\\"sku\\\": \\\"VALIDATED-ITEM\\\", \\\"qtd\\\": 1}]}\",
     \"EventBusName\": \"$BUS_NAME\"
@@ -39,7 +39,7 @@ sleep 10
 # 3. Teste de Cancelamento
 echo "Sending Cancel Event for $ORDER_ID..."
 aws events put-events --region "$REGION" --entries "[{
-    \"Source\": \"lab.aula4.operacoes\",
+    \"Source\": \"app.orders.operations\",
     \"DetailType\": \"CancelarPedido\",
     \"Detail\": \"{\\\"pedidoId\\\": \\\"$ORDER_ID\\\"}\",
     \"EventBusName\": \"$BUS_NAME\"

@@ -229,7 +229,7 @@ aws s3 cp samples/valid_batch.json s3://order-drop-zone-<seu-sufixo>/
 Simule eventos de alteração ou cancelamento diretamente no EventBridge:
 ```bash
 aws events put-events --entries "[{
-    \"Source\": \"lab.aula4.operacoes\",
+    \"Source\": \"app.orders.operations\",
     \"DetailType\": \"AlterarPedido\",
     \"Detail\": \"{\\\"pedidoId\\\": \\\"ORD-001\\\", \\\"novosItens\\\": [{\\\"sku\\\": \\\"PROD-B\\\", \\\"qtd\\\": 2}]}\",
     \"EventBusName\": \"pedidos-event-bus-<seu-sufixo>\"
@@ -300,8 +300,8 @@ graph LR
     end
 
     subgraph "APIs"
-        POST[API Gateway<br/>POST /orders]
-        GET[API Gateway<br/>GET /orders/{id}]
+        POST(API Gateway<br/>POST /orders)
+        GET(API Gateway<br/>GET /orders by ID)
     end
 
     subgraph "Backend"

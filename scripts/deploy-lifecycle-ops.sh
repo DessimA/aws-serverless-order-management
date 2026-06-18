@@ -88,7 +88,7 @@ for OP in "${OPS[@]}"; do
     fi
 
     # 6. EventBridge Rule & SQS Policy
-    aws events put-rule --name "$RULE" --event-bus-name "$BUS_NAME" --event-pattern "{\"source\": [\"lab.aula4.operacoes\"], \"detail-type\": [\"$DETAIL_TYPE\"]}" --region "$REGION"
+    aws events put-rule --name "$RULE" --event-bus-name "$BUS_NAME" --event-pattern "{\"source\": [\"app.orders.operations\"], \"detail-type\": [\"$DETAIL_TYPE\"]}" --region "$REGION"
     aws events put-targets --rule "$RULE" --event-bus-name "$BUS_NAME" --targets "Id"="T1","Arn"="$SQS_ARN" --region "$REGION"
     aws sqs set-queue-attributes --queue-url "$SQS_URL" --region "$REGION" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"SQS:SendMessage\\\",\\\"Resource\\\":\\\"$SQS_ARN\\\",\\\"Condition\\\":{\\\"ArnEquals\\\":{\\\"aws:SourceArn\\\":\\\"arn:aws:events:$REGION:$ACCOUNT_ID:rule/$BUS_NAME/$RULE\\\"}}}]}\"}"
 done

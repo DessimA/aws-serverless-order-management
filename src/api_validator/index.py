@@ -44,7 +44,7 @@ def lambda_handler(event, context):
         response = events.put_events(
             Entries=[
                 {
-                    'Source': 'lab.aula1.pedidos.validacao',
+                    'Source': 'app.orders.validation',
                     'DetailType': 'NovoPedidoValidado',
                     'Detail': json.dumps(event_detail),
                     'EventBusName': EVENT_BUS_NAME
