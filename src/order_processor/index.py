@@ -3,6 +3,7 @@ import os
 import boto3
 from datetime import datetime
 from botocore.exceptions import ClientError
+from common.sqs import parse_detail, parse_body
 
 DYNAMODB_TABLE = os.environ['DYNAMODB_TABLE']
 production_table = boto3.resource('dynamodb').Table(DYNAMODB_TABLE)
@@ -12,8 +13,8 @@ def lambda_handler(event, context):
 
     for record in event['Records']:
         try:
-            envelope = json.loads(record['body'])
-            order_detail = json.loads(envelope.get('detail', '{}'))
+            envelope = parse_body(record)
+            order_detail = parse_detail(record)
 
             order_id = order_detail.get('pedidoId')
             if not order_id:

@@ -1,8 +1,8 @@
-import json
 import os
 import boto3
 from datetime import datetime
 from botocore.exceptions import ClientError
+from common.sqs import parse_detail
 
 production_table = boto3.resource("dynamodb").Table(os.environ["DYNAMODB_TABLE"])
 
@@ -23,7 +23,7 @@ def _process(order_id, update_expression, expression_values):
 def _handler(event, context, operation):
     for record in event["Records"]:
         try:
-            payload = json.loads(json.loads(record["body"]).get("detail", "{}"))
+            payload = parse_detail(record)
             order_id = payload.get("pedidoId")
             if operation == "cancel":
                 if order_id:
