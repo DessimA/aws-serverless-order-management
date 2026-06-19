@@ -61,9 +61,14 @@ S3_NOTIFICATION_CONFIG='{"QueueConfigurations":[{"Id":"'$S3_EVENT_QUEUE_NAME'","
 aws s3api put-bucket-notification-configuration --bucket "$BUCKET_NAME" --notification-configuration "$S3_NOTIFICATION_CONFIG" --region "$AWS_REGION"
 
 # === Lambda Deployment ===
-cd ../src/batch_processor
-zip -q ../../scripts/lambda_deploy.zip index.py
-cd ../../scripts
+PKG_DIR=$(mktemp -d)
+cp ../src/batch_processor/index.py "$PKG_DIR/"
+mkdir -p "$PKG_DIR/common"
+cp ../src/common/*.py "$PKG_DIR/common/"
+cd "$PKG_DIR"
+zip -qr "$SCRIPT_DIR/lambda_deploy.zip" .
+cd "$SCRIPT_DIR"
+rm -rf "$PKG_DIR"
 
 SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME" --query Attributes.TopicArn --output text --region "$AWS_REGION")
 validate_not_empty "SNS_TOPIC_ARN" "$SNS_TOPIC_ARN" "SNS Topic ARN"

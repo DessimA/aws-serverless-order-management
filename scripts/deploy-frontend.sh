@@ -103,9 +103,14 @@ deploy_lambda() {
     local handler="$4"
     local zip_name="$5"
 
-    cd "$src_dir"
-    zip -q "$SCRIPT_DIR/$zip_name" index.py
+    PKG_DIR=$(mktemp -d)
+    cp "$src_dir/index.py" "$PKG_DIR/"
+    mkdir -p "$PKG_DIR/common"
+    cp "$SCRIPT_DIR/../src/common/"*.py "$PKG_DIR/common/"
+    cd "$PKG_DIR"
+    zip -qr "$SCRIPT_DIR/$zip_name" .
     cd "$SCRIPT_DIR"
+    rm -rf "$PKG_DIR"
 
     if ! aws lambda get-function --function-name "$lambda_name" --region "$AWS_REGION" >/dev/null 2>&1; then
         echo "Criando Lambda $lambda_name..."

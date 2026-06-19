@@ -56,9 +56,14 @@ VALIDATION_BUFFER_ARN="$QUEUE_ARN"
 aws iam put-role-policy --role-name "$PRE_ROLE_NAME" --policy-name "PreValidatorSQSAccess" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sqs:SendMessage\",\"Resource\":\"$VALIDATION_BUFFER_ARN\"}]}"
 
 # === Deploy LambdaPre ===
-cd ../src/pre_validator
-zip -q ../../scripts/lambda_deploy_pre.zip index.py
-cd ../../scripts
+PKG_DIR_PRE=$(mktemp -d)
+cp ../src/pre_validator/index.py "$PKG_DIR_PRE/"
+mkdir -p "$PKG_DIR_PRE/common"
+cp ../src/common/*.py "$PKG_DIR_PRE/common/"
+cd "$PKG_DIR_PRE"
+zip -qr "$SCRIPT_DIR/lambda_deploy_pre.zip" .
+cd "$SCRIPT_DIR"
+rm -rf "$PKG_DIR_PRE"
 
 ensure_lambda_function "$PRE_LAMBDA_NAME" "$PRE_ROLE_NAME" "index.lambda_handler" "lambda_deploy_pre.zip" "$AWS_REGION" "$ACCOUNT_ID" "SQS_QUEUE_URL=$VALIDATION_BUFFER_URL"
 validate_lambda_config "$PRE_LAMBDA_NAME" "$AWS_REGION" "SQS_QUEUE_URL"
@@ -72,9 +77,14 @@ ensure_iam_lambda_role "$VAL_ROLE_NAME"
 aws iam put-role-policy --role-name "$VAL_ROLE_NAME" --policy-name "ValidatorAccess" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"events:PutEvents\",\"Resource\":\"$EVENT_BUS_ARN\"},{\"Effect\":\"Allow\",\"Action\":\"sns:Publish\",\"Resource\":\"$SNS_TOPIC_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$VALIDATION_BUFFER_ARN\"}]}"
 
 # === Deploy LambdaVal ===
-cd ../src/order_validator
-zip -q ../../scripts/lambda_deploy_val.zip index.py
-cd ../../scripts
+PKG_DIR_VAL=$(mktemp -d)
+cp ../src/order_validator/index.py "$PKG_DIR_VAL/"
+mkdir -p "$PKG_DIR_VAL/common"
+cp ../src/common/*.py "$PKG_DIR_VAL/common/"
+cd "$PKG_DIR_VAL"
+zip -qr "$SCRIPT_DIR/lambda_deploy_val.zip" .
+cd "$SCRIPT_DIR"
+rm -rf "$PKG_DIR_VAL"
 
 ensure_lambda_function "$VAL_LAMBDA_NAME" "$VAL_ROLE_NAME" "index.lambda_handler" "lambda_deploy_val.zip" "$AWS_REGION" "$ACCOUNT_ID" "EVENT_BUS_NAME=$EVENT_BUS_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
 validate_lambda_config "$VAL_LAMBDA_NAME" "$AWS_REGION" "EVENT_BUS_NAME" "SNS_TOPIC_ARN"
