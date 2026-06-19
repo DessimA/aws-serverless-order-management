@@ -43,30 +43,14 @@ sns_subscribe_email "$SNS_TOPIC_ARN" "$NOTIFICATION_EMAIL" "$AWS_REGION"
 # LAMBDA PRE-VALIDATOR (LambdaPre: API Gateway → SQS FIFO)
 # ================================================================
 
-# === IAM Role for LambdaPre ===
-if ! aws iam get-role --role-name "$PRE_ROLE_NAME" >/dev/null 2>&1; then
-    aws iam create-role --role-name "$PRE_ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
-    aws iam attach-role-policy --role-name "$PRE_ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-fi
-wait_for_iam_role "$PRE_ROLE_NAME"
+ensure_iam_lambda_role "$PRE_ROLE_NAME"
 
-# === SQS FIFO Queues for API buffer ===
-if ! aws sqs get-queue-url --queue-name "$VALIDATION_DLQ" --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws sqs create-queue --queue-name "$VALIDATION_DLQ" --attributes "{\"FifoQueue\":\"true\"}" --region "$AWS_REGION"
-fi
-VALIDATION_DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$VALIDATION_DLQ" --region "$AWS_REGION" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
+VALIDATION_DLQ_ARN=$(ensure_sqs_dlq "$VALIDATION_DLQ" "$AWS_REGION" "true")
 validate_not_empty "VALIDATION_DLQ_ARN" "$VALIDATION_DLQ_ARN" "Validation DLQ ARN"
 
-if ! aws sqs get-queue-url --queue-name "$VALIDATION_BUFFER_QUEUE" --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws sqs create-queue --queue-name "$VALIDATION_BUFFER_QUEUE" --attributes "{\"FifoQueue\":\"true\",\"ContentBasedDeduplication\":\"true\",\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$VALIDATION_DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
-fi
-VALIDATION_BUFFER_URL=$(aws sqs get-queue-url --queue-name "$VALIDATION_BUFFER_QUEUE" --region "$AWS_REGION" --query QueueUrl --output text)
-VALIDATION_BUFFER_ARN=$(aws sqs get-queue-attributes --queue-url "$VALIDATION_BUFFER_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
-aws sqs set-queue-attributes --queue-url "$VALIDATION_BUFFER_URL" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$AWS_REGION"
-wait_for_sqs_queue "$VALIDATION_BUFFER_QUEUE" "$AWS_REGION"
-validate_not_empty "VALIDATION_BUFFER_URL" "$VALIDATION_BUFFER_URL" "SQS Buffer Queue URL"
-validate_not_empty "VALIDATION_BUFFER_ARN" "$VALIDATION_BUFFER_ARN" "SQS Buffer Queue ARN"
-validate_sqs_queue "$VALIDATION_BUFFER_URL" "$AWS_REGION" "true"
+ensure_sqs_queue "$VALIDATION_BUFFER_QUEUE" "$VALIDATION_DLQ_ARN" "$AWS_REGION" "true" "true"
+VALIDATION_BUFFER_URL="$QUEUE_URL"
+VALIDATION_BUFFER_ARN="$QUEUE_ARN"
 
 # Inline policy for LambdaPre: sqs:SendMessage
 aws iam put-role-policy --role-name "$PRE_ROLE_NAME" --policy-name "PreValidatorSQSAccess" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sqs:SendMessage\",\"Resource\":\"$VALIDATION_BUFFER_ARN\"}]}"
@@ -76,18 +60,7 @@ cd ../src/pre_validator
 zip -q ../../scripts/lambda_deploy_pre.zip index.py
 cd ../../scripts
 
-if ! aws lambda get-function --function-name "$PRE_LAMBDA_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-    echo "Criando Lambda $PRE_LAMBDA_NAME..."
-    for i in {1..3}; do
-        aws lambda create-function --function-name "$PRE_LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$PRE_ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy_pre.zip --timeout 60 --region "$AWS_REGION" && break || sleep 10
-    done
-    aws lambda wait function-active-v2 --function-name "$PRE_LAMBDA_NAME" --region "$AWS_REGION"
-else
-    aws lambda update-function-code --function-name "$PRE_LAMBDA_NAME" --zip-file fileb://lambda_deploy_pre.zip --region "$AWS_REGION"
-    aws lambda wait function-updated-v2 --function-name "$PRE_LAMBDA_NAME" --region "$AWS_REGION"
-fi
-
-aws lambda update-function-configuration --function-name "$PRE_LAMBDA_NAME" --timeout 60 --environment "Variables={SQS_QUEUE_URL=$VALIDATION_BUFFER_URL}" --region "$AWS_REGION"
+ensure_lambda_function "$PRE_LAMBDA_NAME" "$PRE_ROLE_NAME" "index.lambda_handler" "lambda_deploy_pre.zip" "$AWS_REGION" "$ACCOUNT_ID" "SQS_QUEUE_URL=$VALIDATION_BUFFER_URL"
 validate_lambda_config "$PRE_LAMBDA_NAME" "$AWS_REGION" "SQS_QUEUE_URL"
 rm -f lambda_deploy_pre.zip
 
@@ -95,12 +68,7 @@ rm -f lambda_deploy_pre.zip
 # LAMBDA VALIDATOR (LambdaVal: SQS FIFO → EventBridge + SNS)
 # ================================================================
 
-# === IAM Role for LambdaVal ===
-if ! aws iam get-role --role-name "$VAL_ROLE_NAME" >/dev/null 2>&1; then
-    aws iam create-role --role-name "$VAL_ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
-    aws iam attach-role-policy --role-name "$VAL_ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-fi
-wait_for_iam_role "$VAL_ROLE_NAME"
+ensure_iam_lambda_role "$VAL_ROLE_NAME"
 aws iam put-role-policy --role-name "$VAL_ROLE_NAME" --policy-name "ValidatorAccess" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"events:PutEvents\",\"Resource\":\"$EVENT_BUS_ARN\"},{\"Effect\":\"Allow\",\"Action\":\"sns:Publish\",\"Resource\":\"$SNS_TOPIC_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$VALIDATION_BUFFER_ARN\"}]}"
 
 # === Deploy LambdaVal ===
@@ -108,27 +76,11 @@ cd ../src/order_validator
 zip -q ../../scripts/lambda_deploy_val.zip index.py
 cd ../../scripts
 
-if ! aws lambda get-function --function-name "$VAL_LAMBDA_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-    echo "Criando Lambda $VAL_LAMBDA_NAME..."
-    for i in {1..3}; do
-        aws lambda create-function --function-name "$VAL_LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$VAL_ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy_val.zip --timeout 60 --region "$AWS_REGION" && break || sleep 10
-    done
-    aws lambda wait function-active-v2 --function-name "$VAL_LAMBDA_NAME" --region "$AWS_REGION"
-else
-    aws lambda update-function-code --function-name "$VAL_LAMBDA_NAME" --zip-file fileb://lambda_deploy_val.zip --region "$AWS_REGION"
-    aws lambda wait function-updated-v2 --function-name "$VAL_LAMBDA_NAME" --region "$AWS_REGION"
-fi
-
-aws lambda update-function-configuration --function-name "$VAL_LAMBDA_NAME" --timeout 60 --environment "Variables={EVENT_BUS_NAME=$EVENT_BUS_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN}" --region "$AWS_REGION"
+ensure_lambda_function "$VAL_LAMBDA_NAME" "$VAL_ROLE_NAME" "index.lambda_handler" "lambda_deploy_val.zip" "$AWS_REGION" "$ACCOUNT_ID" "EVENT_BUS_NAME=$EVENT_BUS_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
 validate_lambda_config "$VAL_LAMBDA_NAME" "$AWS_REGION" "EVENT_BUS_NAME" "SNS_TOPIC_ARN"
 rm -f lambda_deploy_val.zip
 
-# === SQS FIFO → LambdaVal event source mapping ===
-ESM_UUID=$(aws lambda list-event-source-mappings --function-name "$VAL_LAMBDA_NAME" --event-source-arn "$VALIDATION_BUFFER_ARN" --region "$AWS_REGION" --query "EventSourceMappings[0].UUID" --output text)
-if [ -z "$ESM_UUID" ] || [ "$ESM_UUID" == "None" ]; then
-    aws lambda create-event-source-mapping --function-name "$VAL_LAMBDA_NAME" --batch-size 5 --event-source-arn "$VALIDATION_BUFFER_ARN" --region "$AWS_REGION"
-fi
-validate_esm "$VAL_LAMBDA_NAME" "$VALIDATION_BUFFER_ARN" "$AWS_REGION"
+ensure_event_source_mapping "$VAL_LAMBDA_NAME" "$VALIDATION_BUFFER_ARN" "$AWS_REGION"
 
 # ================================================================
 # API GATEWAY → LambdaPre
@@ -151,19 +103,7 @@ if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$ORDE
     aws apigateway put-method --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method POST --authorization-type "NONE" --region "$AWS_REGION"
 fi
 
-# OPTIONS (CORS)
-if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws apigateway put-method --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --authorization-type "NONE" --region "$AWS_REGION"
-fi
-aws apigateway get-method-response --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
-aws apigateway put-method-response --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --status-code 200 \
-    --response-parameters "method.response.header.Access-Control-Allow-Headers=true,method.response.header.Access-Control-Allow-Methods=true,method.response.header.Access-Control-Allow-Origin=true" \
-    --region "$AWS_REGION"
-aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --region "$AWS_REGION" >/dev/null 2>&1 || \
-aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --type MOCK \
-    --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
-aws apigateway get-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
-put_integration_response_cors "$REST_API_ID" "$ORDERS_RESOURCE_ID" "$AWS_REGION"
+setup_api_cors "$REST_API_ID" "$ORDERS_RESOURCE_ID" "$AWS_REGION"
 
 # POST integration → LambdaPre
 aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method POST --region "$AWS_REGION" >/dev/null 2>&1 || \
