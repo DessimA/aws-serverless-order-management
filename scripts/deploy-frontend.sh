@@ -74,11 +74,7 @@ aws s3api put-bucket-policy --bucket "$FRONTEND_BUCKET" --policy "{
 for info in "$READER_ROLE_NAME|$READER_LAMBDA_NAME|reader" "$CTRL_ROLE_NAME|$CTRL_LAMBDA_NAME|ctrl"; do
     IFS='|' read -r role_name lambda_name role_type <<< "$info"
 
-    if ! aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
-        aws iam create-role --role-name "$role_name" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
-        aws iam attach-role-policy --role-name "$role_name" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-    fi
-    wait_for_iam_role "$role_name"
+    ensure_iam_lambda_role "$role_name"
 
     if [ "$role_type" == "reader" ]; then
         aws iam put-role-policy --role-name "$role_name" --policy-name "ReaderDynamoDBAccess" --policy-document "{
@@ -135,8 +131,7 @@ validate_lambda_config "$READER_LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"
 deploy_lambda "$CTRL_LAMBDA_NAME" "$CTRL_ROLE_NAME" "../src/test_controller" "index.lambda_handler" "lambda_deploy_ctrl.zip"
 aws lambda update-function-configuration --function-name "$CTRL_LAMBDA_NAME" \
     --timeout 60 --environment "Variables={EVENT_BUS_NAME=$EVENT_BUS_NAME,S3_BUCKET=$S3_BUCKET}" --region "$AWS_REGION"
-validate_lambda_config "$CTRL_LAMBDA_NAME" "$AWS_REGION" "EVENT_BUS_NAME"
-validate_lambda_config "$CTRL_LAMBDA_NAME" "$AWS_REGION" "S3_BUCKET"
+validate_lambda_config "$CTRL_LAMBDA_NAME" "$AWS_REGION" "EVENT_BUS_NAME" "S3_BUCKET"
 
 # ================================================================
 # API GATEWAY — ADD NEW RESOURCES
@@ -185,22 +180,7 @@ aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDE
     --uri "arn:aws:apigateway:$AWS_REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$AWS_REGION:$ACCOUNT_ID:function:$READER_LAMBDA_NAME/invocations" \
     --region "$AWS_REGION"
 
-# OPTIONS /orders/{orderId} (CORS)
-if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" --http-method OPTIONS --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws apigateway put-method --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" \
-        --http-method OPTIONS --authorization-type "NONE" --region "$AWS_REGION"
-fi
-aws apigateway get-method-response --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
-aws apigateway put-method-response --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" \
-    --http-method OPTIONS --status-code 200 \
-    --response-parameters "method.response.header.Access-Control-Allow-Headers=true,method.response.header.Access-Control-Allow-Methods=true,method.response.header.Access-Control-Allow-Origin=true" \
-    --region "$AWS_REGION"
-aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" --http-method OPTIONS --region "$AWS_REGION" >/dev/null 2>&1 || \
-aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" \
-    --http-method OPTIONS --type MOCK \
-    --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
-aws apigateway get-integration-response --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
-put_integration_response_cors "$REST_API_ID" "$ORDER_ID_RESOURCE_ID" "$AWS_REGION"
+setup_api_cors "$REST_API_ID" "$ORDER_ID_RESOURCE_ID" "$AWS_REGION"
 
 # Lambda permission for API Gateway → read_order
 # Remove old permission first to handle REST API recreation (REST_API_ID may change)
@@ -234,22 +214,7 @@ aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$TEST
     --uri "arn:aws:apigateway:$AWS_REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$AWS_REGION:$ACCOUNT_ID:function:$CTRL_LAMBDA_NAME/invocations" \
     --region "$AWS_REGION"
 
-# OPTIONS /test (CORS)
-if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method OPTIONS --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws apigateway put-method --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
-        --http-method OPTIONS --authorization-type "NONE" --region "$AWS_REGION"
-fi
-aws apigateway get-method-response --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
-aws apigateway put-method-response --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
-    --http-method OPTIONS --status-code 200 \
-    --response-parameters "method.response.header.Access-Control-Allow-Headers=true,method.response.header.Access-Control-Allow-Methods=true,method.response.header.Access-Control-Allow-Origin=true" \
-    --region "$AWS_REGION"
-aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method OPTIONS --region "$AWS_REGION" >/dev/null 2>&1 || \
-aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
-    --http-method OPTIONS --type MOCK \
-    --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$AWS_REGION"
-aws apigateway get-integration-response --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method OPTIONS --status-code 200 --region "$AWS_REGION" >/dev/null 2>&1 || \
-put_integration_response_cors "$REST_API_ID" "$TEST_RESOURCE_ID" "$AWS_REGION"
+setup_api_cors "$REST_API_ID" "$TEST_RESOURCE_ID" "$AWS_REGION"
 
 # Lambda permission for API Gateway → test_controller
 aws lambda remove-permission --function-name "$CTRL_LAMBDA_NAME" --statement-id apigateway-ctrl \
@@ -290,8 +255,7 @@ aws s3api head-object --bucket "$FRONTEND_BUCKET" --key "index.html" --region "$
 aws s3api head-object --bucket "$FRONTEND_BUCKET" --key "config.js" --region "$AWS_REGION" >/dev/null 2>&1 || { echo "FALHA: config.js not found in frontend bucket after sync" >&2; exit 1; }
 rm -rf "$BUILD_DIR"
 
-# Update the env badge in index.html so it shows the endpoint
-# (We do this by re-uploading after processing)
+
 
 FRONTEND_URL="http://${FRONTEND_BUCKET}.s3-website.${AWS_REGION}.amazonaws.com"
 
