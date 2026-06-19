@@ -2,6 +2,7 @@ import json
 import os
 import boto3
 from datetime import datetime
+from common.sns import publish_error
 
 eventbridge_client = boto3.client('events')
 sns_client = boto3.client('sns')
@@ -47,16 +48,10 @@ def lambda_handler(event, context):
 
         except Exception as e:
             print(f"Error processing order: {str(e)}")
-            try:
-                sns_client.publish(
-                    TopicArn=SNS_TOPIC_ARN,
-                    Subject="Order Validation Error",
-                    Message=json.dumps({
-                        'error': str(e),
-                        'body': record.get('body', 'N/A')
-                    })
-                )
-            except Exception as sns_err:
-                print(f"Failed to publish SNS alert: {sns_err}")
+            publish_error(sns_client, SNS_TOPIC_ARN, "Order Validation Error", {
+                'error': str(e),
+                'body': record.get('body', 'N/A')
+            })
+            raise
 
     return {'statusCode': 200}
