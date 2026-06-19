@@ -1,5 +1,21 @@
 #!/usr/bin/env bash
 
+VISIBILITY_TIMEOUT="${VISIBILITY_TIMEOUT:-360}"
+
+validate_resource_suffix() {
+    local suffix="$1"
+    if [[ ! "$suffix" =~ ^[a-z0-9-]+$ ]]; then
+        echo "ERRO: RESOURCE_SUFFIX '$suffix' contem caracteres invalidos."
+        echo "  Use apenas letras minusculas, numeros e hifens (ex: 'meu-ambiente-01')."
+        exit 1
+    fi
+    if [ ${#suffix} -lt 1 ]; then
+        echo "ERRO: RESOURCE_SUFFIX nao pode ser vazio."
+        exit 1
+    fi
+    echo "  OK: RESOURCE_SUFFIX '$suffix' possui formato valido."
+}
+
 wait_for_iam_role() {
     local role_name="$1"
     echo "Aguardando propagacao do IAM Role $role_name..."
@@ -52,6 +68,9 @@ validate_env() {
     done
     if [ "$missing" -eq 1 ]; then
         exit 1
+    fi
+    if [[ "$*" == *"RESOURCE_SUFFIX"* ]] && [ -n "${RESOURCE_SUFFIX:-}" ]; then
+        validate_resource_suffix "$RESOURCE_SUFFIX"
     fi
 }
 
@@ -153,8 +172,8 @@ validate_sqs_queue() {
     }
     local vt
     vt=$(echo "$attrs" | jq -r '.Attributes.VisibilityTimeout // empty')
-    if [ "$vt" != "90" ]; then
-        echo "ERRO [VALIDACAO]: Fila SQS VisibilityTimeout=$vt (esperado=90)"
+    if [ "$vt" != "$VISIBILITY_TIMEOUT" ]; then
+        echo "ERRO [VALIDACAO]: Fila SQS VisibilityTimeout=$vt (esperado=$VISIBILITY_TIMEOUT)"
         exit 1
     fi
     if [ "$check_dedup" == "true" ]; then
@@ -295,18 +314,18 @@ ensure_sqs_queue() {
     local is_fifo="$5"
     if [ "$fifo" == "true" ]; then
         if ! aws sqs get-queue-url --queue-name "$queue_name" --region "$region" >/dev/null 2>&1; then
-            aws sqs create-queue --queue-name "$queue_name" --attributes "{\"FifoQueue\":\"true\",\"ContentBasedDeduplication\":\"true\",\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$dlq_arn\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$region"
+            aws sqs create-queue --queue-name "$queue_name" --attributes "{\"FifoQueue\":\"true\",\"ContentBasedDeduplication\":\"true\",\"VisibilityTimeout\":\"$VISIBILITY_TIMEOUT\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$dlq_arn\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$region"
         fi
     else
         if ! aws sqs get-queue-url --queue-name "$queue_name" --region "$region" >/dev/null 2>&1; then
-            aws sqs create-queue --queue-name "$queue_name" --attributes "{\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$dlq_arn\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$region"
+            aws sqs create-queue --queue-name "$queue_name" --attributes "{\"VisibilityTimeout\":\"$VISIBILITY_TIMEOUT\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$dlq_arn\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$region"
         fi
     fi
     local url
     url=$(aws sqs get-queue-url --queue-name "$queue_name" --region "$region" --query QueueUrl --output text)
     local arn
     arn=$(aws sqs get-queue-attributes --queue-url "$url" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$region")
-    aws sqs set-queue-attributes --queue-url "$url" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$region"
+    aws sqs set-queue-attributes --queue-url "$url" --attributes "{\"VisibilityTimeout\":\"$VISIBILITY_TIMEOUT\"}" --region "$region"
     wait_for_sqs_queue "$queue_name" "$region"
     validate_not_empty "QUEUE_URL" "$url" "$queue_name Queue URL"
     validate_not_empty "QUEUE_ARN" "$arn" "$queue_name Queue ARN"
@@ -347,7 +366,16 @@ ensure_event_source_mapping() {
     local uuid
     uuid=$(aws lambda list-event-source-mappings --function-name "$function_name" --event-source-arn "$source_arn" --region "$region" --query "EventSourceMappings[0].UUID" --output text)
     if [ -z "$uuid" ] || [ "$uuid" == "None" ]; then
-        aws lambda create-event-source-mapping --function-name "$function_name" --batch-size "$batch_size" --event-source-arn "$source_arn" --region "$region"
+        aws lambda create-event-source-mapping --function-name "$function_name" --batch-size "$batch_size" --event-source-arn "$source_arn" --function-response-types "ReportBatchItemFailures" --region "$region"
+    else
+        local current_types
+        current_types=$(aws lambda get-event-source-mapping --uuid "$uuid" --region "$region" --query "FunctionResponseTypes" --output json 2>/dev/null || echo "[]")
+        if echo "$current_types" | grep -q "ReportBatchItemFailures"; then
+            echo "  OK: Event source mapping $uuid ja possui ReportBatchItemFailures."
+        else
+            echo "  Atualizando event source mapping $uuid para ReportBatchItemFailures..."
+            aws lambda update-event-source-mapping --uuid "$uuid" --function-response-types "ReportBatchItemFailures" --region "$region" >/dev/null 2>&1
+        fi
     fi
     validate_esm "$function_name" "$source_arn" "$region"
 }
