@@ -8,9 +8,6 @@ table = boto3.resource("dynamodb").Table(os.environ["DYNAMODB_TABLE"])
 
 
 def lambda_handler(event, context):
-    if event.get("httpMethod") == "OPTIONS":
-        return {"statusCode": 200, "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,OPTIONS", "Access-Control-Allow-Headers": "Content-Type"}, "body": ""}
-
     try:
         params = event.get("pathParameters") or {}
         order_id = params.get("orderId")

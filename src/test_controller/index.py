@@ -11,9 +11,6 @@ EVENT_BUS_NAME = os.environ['EVENT_BUS_NAME']
 S3_BUCKET = os.environ['S3_BUCKET']
 
 def lambda_handler(event, context):
-    if event.get('httpMethod') == 'OPTIONS':
-        return {'statusCode': 200, 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST,GET,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type'}, 'body': ''}
-
     try:
         body = json.loads(event.get('body', '{}'))
         action = body.get('action')
@@ -40,7 +37,7 @@ def handle_publish_event(body):
     detail_type = body.get('detailType')
     detail = body.get('detail')
 
-    if not detail_type or not detail:
+    if not detail_type or detail is None:
         return error_response(400, 'detailType and detail are required')
 
     response = eventbridge.put_events(

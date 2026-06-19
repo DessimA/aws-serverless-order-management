@@ -5,7 +5,7 @@ def publish_error(sns_client, topic_arn, subject, details):
     try:
         sns_client.publish(
             TopicArn=topic_arn,
-            Subject=subject,
+            Subject=subject[:100],
             Message=json.dumps(details),
         )
     except Exception as e:
