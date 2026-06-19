@@ -140,8 +140,13 @@ A organização do repositório segue padrões de modularidade para facilitar a 
 
 ```text
 aws-serverless-order-ingestion/
+├── .github/                    # Templates de contribuicao
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.md       # Template de report de bug
+│   │   └── feature_request.md  # Template de solicitacao de funcionalidade
+│   └── PULL_REQUEST_TEMPLATE.md # Template de Pull Request
 ├── scripts/                    # Infraestrutura como Codigo (IaC) e Deploy
-│   ├── lib.sh                  # Funcoes utilitarias (wait IAM, validate env, load env)
+│   ├── lib.sh                  # 13 funcoes utilitarias (deploy, validacao, IAM, SQS, EventBridge)
 │   ├── deploy-api-flow.sh      # Provisiona API Gateway, SQS FIFO, Pre-Validator e Validator
 │   ├── deploy-s3-flow.sh       # Provisiona S3, SQS Standard, File Validator e Auditoria
 │   ├── deploy-order-processor.sh # Provisiona o Processador Central (persistencia)
@@ -160,14 +165,18 @@ aws-serverless-order-ingestion/
 │   ├── index.html              # Interface com abas para cada fluxo
 │   ├── style.css               # Tema escuro responsivo
 │   ├── config.template.js      # Template com placeholders (processado pelo deploy)
-│   └── app.js                  # Logica de teste por seção (API, S3, Lifecycle, Read)
+│   └── app.js                  # Logica de teste por seção (Novo Pedido, Consultar, Gerenciar, Upload)
 ├── samples/                    # Exemplos de payloads para testes e integracao
 │   ├── api_request.json        # Modelo de requisicao para o API Gateway
 │   ├── valid_batch.json        # Modelo de arquivo para processamento S3
 │   └── invalid_batch.json      # Modelo para teste de falha e alerta SNS
 ├── .env.example                # Template de variaveis de ambiente
+├── CODE_OF_CONDUCT.md          # Codigo de Conduta (Contributor Covenant v2.1)
+├── CONTRIBUTING.md             # Guia de contribuicao
 ├── docker-compose.yaml         # Orquestracao do ambiente LocalStack Pro
+├── LICENSE                     # Licenca MIT
 ├── run.sh                      # Script principal de automacao do Lab
+├── SECURITY.md                 # Politica de seguranca e report de vulnerabilidades
 └── README.md                   # Documentacao tecnica completa
 ```
 
@@ -232,11 +241,23 @@ chmod +x run.sh
 7.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
 
 ### Utilitários (scripts/lib.sh)
-Os scripts de deploy compartilham uma biblioteca de funções comum:
-- **`load_env`**: Carrega o `.env` de forma segura utilizando `set -a` + `source`.
-- **`validate_env`**: Valida que variáveis obrigatórias estão definidas antes de prosseguir.
-- **`wait_for_iam_role`**: Polling ativo (12 tentativas, 5s intervalo) que substitui `sleep` arbitrário, garantindo que a Role IAM esteja propagada antes de criar recursos dependentes.
-- **`wait_for_sqs_queue`**: Aguarda a fila SQS ficar disponível após criação.
+Os scripts de deploy compartilham 13 funções utilitárias:
+
+| Função | Descrição |
+|--------|-----------|
+| `load_env` | Carrega o `.env` de forma segura via `set -a` + `source` |
+| `validate_env` | Valida que variáveis obrigatórias estão definidas |
+| `wait_for_iam_role` | Polling ativo (12 tentativas, 5s) para propagação de IAM Role |
+| `wait_for_sqs_queue` | Aguarda fila SQS ficar disponível após criação |
+| `put_integration_response_cors` | Configura headers CORS em integration response do API Gateway |
+| `sns_subscribe_email` | Inscreve e-mail no tópico SNS de forma idempotente |
+| `validate_not_empty` | Valida que ARN/ID não está vazio ou `None` |
+| `validate_lambda_config` | Valida timeout (60s) e variáveis de ambiente da Lambda |
+| `validate_sqs_queue` | Valida VisibilityTimeout=90 e ContentBasedDeduplication (se FIFO) |
+| `validate_sqs_policy` | Valida política resource-based da fila SQS |
+| `validate_eventbridge_target` | Valida target da regra EventBridge (ARN + MessageGroupId) |
+| `validate_esm` | Valida event source mapping SQS → Lambda (UUID + estado Enabled) |
+| `put_eventbridge_target` | Configura target EventBridge com SqsParameters.MessageGroupId |
 
 ---
 
@@ -247,10 +268,10 @@ O sistema pode ser validado de três formas: (1) via dashboard web, (2) via scri
 ### 10.1. Teste via Dashboard Web (Recomendado)
 Após executar `./run.sh`, o URL do dashboard é exibido no final do `deploy-frontend.sh`. Abra no navegador e utilize as abas:
 
-1. **API Orders**: Preencha `pedidoId` e `clienteId`, clique em "Send Valid Order". Teste cenários de falha com os botões vermelhos.
-2. **S3 Batch**: Clique em "Upload Valid Batch" para testar o fluxo de validação assíncrona. Use "Upload Invalid Schema" para disparar alerta SNS.
-3. **Lifecycle**: Informe um `orderId` existente (criado via API Orders) e teste cancelamento/atualização.
-4. **Consult**: Consulte pedidos pelo ID para verificar o resultado das operações.
+1. **Novo Pedido**: Preencha Cliente, Produto, Quantidade e Preco; clique em "Criar Pedido". Use "Automatico" para gerar dados aleatórios. Teste cenários de erro no collapsible "Cenarios de Erro".
+2. **Consultar**: Digite um Order ID e clique em "Consultar". Use "Ultimo Pedido" para preencher automaticamente o ID do último pedido criado.
+3. **Gerenciar**: Informe um Order ID e use "Cancelar Pedido" ou "Atualizar Pedido". Teste cenários de pedido inexistente no collapsible "Cenarios de Erro".
+4. **Upload**: Clique em "Gerar e Enviar Lote de Teste" para testar o fluxo de validação assíncrona via S3. Use "Listar Arquivos" para ver arquivos enviados. Teste schemas inválidos e arquivos corrompidos no collapsible "Cenarios de Erro".
 
 O painel lateral exibe logs em tempo real com status e payloads de cada operação.
 
@@ -328,10 +349,10 @@ O dashboard é dividido em 4 abas, cada uma correspondendo a um fluxo do sistema
 
 | Aba | Ações de Sucesso | Ações de Falha |
 |-----|-----------------|----------------|
-| **API Orders** | Send Valid Order → pre_validator → SQS FIFO → order_validator → EventBridge → Processor → DynamoDB | Missing pedidoId (400), Missing clienteId (400), Invalid JSON (400), Send Duplicate (ConditionalCheckFailedException → DLQ) |
-| **S3 Batch** | Upload Valid Batch (lista_pedidos válido → DynamoDB Audit) | Upload Invalid Schema (→ SNS Alert), Upload Corrupt File (→ SNS Alert) |
-| **Lifecycle** | Cancel Order, Update Order (EventBridge → SQS FIFO → Lifecycle Lambda → DynamoDB) | Cancel Non-existent, Update Non-existent (ConditionalCheckFailedException → DLQ) |
-| **Consult** | Read Order (GET /orders/{id} → DynamoDB) | Read Non-existent (404) |
+| **Novo Pedido** | Criar Pedido → pre_validator → SQS FIFO → order_validator → EventBridge → Processor → DynamoDB | Faltando pedidoId (400), Faltando clienteId (400), JSON Inválido (400), Enviar Duplicata (ConditionalCheckFailedException → DLQ) |
+| **Upload** | Gerar e Enviar Lote de Teste (lista_pedidos válido → DynamoDB Audit) | Schema Inválido (→ SNS Alert), Arquivo Corrompido (→ SNS Alert) |
+| **Gerenciar** | Cancelar Pedido, Atualizar Pedido (EventBridge → SQS FIFO → Lifecycle Lambda → DynamoDB) | Cancelar Inexistente, Atualizar Inexistente (ConditionalCheckFailedException → DLQ) |
+| **Consultar** | Consultar (GET /orders/{id} → DynamoDB) | Pedido Inexistente (404) |
 
 ### 13.2. Componentes do Frontend
 
@@ -351,21 +372,21 @@ O dashboard é dividido em 4 abas, cada uma correspondendo a um fluxo do sistema
 
 ### 13.4. Painel de Logs
 
-O dashboard exibe um painel lateral com logs em tempo real de cada operação:
-- ✅ **Verde**: Operação bem-sucedida (status 200/201 esperado)
-- ❌ **Vermelho**: Falha inesperada
-- ⚠️ **Amarelo**: Operação em andamento ou falha esperada
+O dashboard exibe um painel lateral com logs em tempo real de cada operação, utilizando cores Bootstrap para indicar o status:
+- <span style="color:var(--bs-success-text)">**Verde**</span>: Operação bem-sucedida (status 200/201 esperado)
+- <span style="color:var(--bs-danger-text)">**Vermelho**</span>: Falha inesperada
+- <span style="color:var(--bs-warning-text)">**Amarelo**</span>: Operação em andamento ou falha esperada
 
-Cada entrada mostra timestamp, nome do teste, status HTTP e payload completo da resposta.
+Cada entrada mostra timestamp, nome do teste, status HTTP e payload completo da resposta. Os cards de resultado inline utilizam ícones `check_circle` (sucesso), `error` (erro) e `warning` (aviso) do Material Icons.
 
 ### 13.5. Fluxos de Notificação SNS (E-mail)
 
 | Gatilho | O que falha | Envia E-mail? |
 |---------|------------|:---:|
-| S3: Upload Invalid Schema | `file_validator` → `ValueError` (lista_pedidos ausente) | ✅ |
-| S3: Upload Corrupt File | `file_validator` → exceção de parse JSON | ✅ |
-| API: Duplicate Order | `order_processor` → `ConditionalCheckFailedException` → DLQ | ❌ |
-| Lifecycle: Non-existent | `cancel_processor`/`update_processor` → `ConditionalCheckFailedException` → DLQ | ❌ |
+| S3: Upload Invalid Schema | `file_validator` → `ValueError` (lista_pedidos ausente) | Sim |
+| S3: Upload Corrupt File | `file_validator` → exceção de parse JSON | Sim |
+| API: Duplicate Order | `order_processor` → `ConditionalCheckFailedException` → DLQ | Não |
+| Lifecycle: Non-existent | `cancel_processor`/`update_processor` → `ConditionalCheckFailedException` → DLQ | Não |
 
 ---
 **Desenvolvido por [José Anderson](https://github.com/DessimA)**
