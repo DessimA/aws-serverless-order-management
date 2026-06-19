@@ -10,113 +10,155 @@
     <header>
         <h1>Order Management System</h1>
         <p class="subtitle">Testing Dashboard</p>
-        <div class="env-badge" id="envBadge"></div>
+        <div class="header-right">
+            <span class="last-order-badge" id="lastOrderBadge" style="display:none">
+                Último pedido: <strong id="lastOrderDisplay"></strong>
+            </span>
+            <div class="env-badge" id="envBadge"></div>
+        </div>
     </header>
 
     <main class="dashboard">
         <nav class="tabs">
-            <button class="tab active" data-tab="api">API Orders</button>
-            <button class="tab" data-tab="s3">S3 Batch</button>
-            <button class="tab" data-tab="lifecycle">Lifecycle</button>
-            <button class="tab" data-tab="read">Consult</button>
+            <button class="tab active" data-tab="create">Criar Pedido</button>
+            <button class="tab" data-tab="consult">Consultar Pedido</button>
+            <button class="tab" data-tab="manage">Gerenciar Pedido</button>
+            <button class="tab" data-tab="batch">Upload em Lote</button>
         </nav>
 
         <div class="panel-container">
-            <div class="panel tab-content active" id="tab-api">
-                <h2>API Order Flow</h2>
-                <p class="section-desc">Test the synchronous API ingestion: API Gateway → Pre-Validator → SQS FIFO → Validator → EventBridge → Processor → DynamoDB</p>
+            <!-- ===== TAB 1: CRIAR PEDIDO ===== -->
+            <div class="panel tab-content active" id="tab-create">
+                <h2>Criar Pedido</h2>
+                <p class="section-desc">Preencha os dados e envie um pedido válido para o pipeline de validação.</p>
 
                 <div class="form-group">
                     <label for="apiPedidoId">pedidoId</label>
-                    <input type="text" id="apiPedidoId" value="ORD-TEST-" placeholder="e.g. ORD-TEST-001">
+                    <input type="text" id="apiPedidoId" value="ORD-TEST-" placeholder="Ex: ORD-TEST-001">
                 </div>
                 <div class="form-group">
                     <label for="apiClienteId">clienteId</label>
-                    <input type="text" id="apiClienteId" value="CLI-TEST" placeholder="e.g. CLI-TEST">
+                    <input type="text" id="apiClienteId" value="CLI-TEST" placeholder="Ex: CLI-TEST">
                 </div>
                 <div class="form-group">
                     <label for="apiItens">Itens (JSON array)</label>
-                    <textarea id="apiItens" rows="3">[{"nome": "Test Item", "quantidade": 1, "preco": 99.9}]</textarea>
+                    <textarea id="apiItens" rows="3">[{"nome": "Item Teste", "quantidade": 1, "preco": 99.9}]</textarea>
                 </div>
 
-                <div class="button-group">
-                    <button class="btn btn-success" onclick="testAPI('valid')">Send Valid Order</button>
-                    <button class="btn btn-danger" onclick="testAPI('missing-pedido')">Missing pedidoId</button>
-                    <button class="btn btn-danger" onclick="testAPI('missing-cliente')">Missing clienteId</button>
-                    <button class="btn btn-danger" onclick="testAPI('invalid-json')">Invalid JSON</button>
-                    <button class="btn btn-warning" onclick="testAPI('duplicate')">Send Duplicate</button>
-                </div>
-            </div>
+                <button class="btn btn-primary btn-lg" onclick="testAPI('valid')" id="btnCreateOrder">
+                    Criar Pedido
+                </button>
 
-            <div class="panel tab-content" id="tab-s3">
-                <h2>S3 Batch Flow</h2>
-                <p class="section-desc">Test the asynchronous batch ingestion: S3 Upload → SQS Standard → File Validator → DynamoDB Audit + SNS Alerts</p>
+                <details class="error-scenarios">
+                    <summary>🧪 Cenários de Erro</summary>
+                    <p class="scenario-hint">Teste como o sistema reage a dados inválidos.</p>
+                    <div class="button-group">
+                        <button class="btn btn-danger" onclick="testAPI('missing-pedido')">Faltando pedidoId</button>
+                        <button class="btn btn-danger" onclick="testAPI('missing-cliente')">Faltando clienteId</button>
+                        <button class="btn btn-danger" onclick="testAPI('invalid-json')">JSON Inválido</button>
+                        <button class="btn btn-warning" onclick="testAPI('duplicate')">Enviar Duplicata</button>
+                    </div>
+                </details>
 
-                <div class="form-group">
-                    <label for="s3Filename">Filename</label>
-                    <input type="text" id="s3Filename" value="test_pedidos_" placeholder="e.g. pedidos_test.json">
-                </div>
-
-                <div class="button-group">
-                    <button class="btn btn-success" onclick="testS3('valid')">Upload Valid Batch</button>
-                    <button class="btn btn-danger" onclick="testS3('invalid-schema')">Upload Invalid Schema</button>
-                    <button class="btn btn-danger" onclick="testS3('corrupt')">Upload Corrupt File</button>
-                </div>
-
-                <div class="form-group" style="margin-top:1rem">
-                    <button class="btn btn-outline" onclick="testS3('list')">List Files in S3</button>
+                <div class="result-card result-empty" id="result-create">
+                    <div class="result-placeholder">Preencha o formulário e clique em <strong>Criar Pedido</strong>.</div>
                 </div>
             </div>
 
-            <div class="panel tab-content" id="tab-lifecycle">
-                <h2>Lifecycle Operations</h2>
-                <p class="section-desc">Test cancel and update operations via EventBridge: POST /test → EventBridge → SQS FIFO → Lifecycle Processor → DynamoDB</p>
-
-                <div class="form-group">
-                    <label for="lifecycleOrderId">Target Order ID</label>
-                    <input type="text" id="lifecycleOrderId" placeholder="e.g. ORD-TEST-001">
-                </div>
-                <div class="form-group" id="updateItensGroup" style="display:none">
-                    <label for="updateItens">New Items (JSON array)</label>
-                    <textarea id="updateItens" rows="3">[{"nome": "Updated Item", "quantidade": 5, "preco": 150.0}]</textarea>
-                </div>
-
-                <div class="button-group">
-                    <button class="btn btn-success" onclick="testLifecycle('cancel')">Cancel Order</button>
-                    <button class="btn btn-danger" onclick="testLifecycle('cancel-nonexistent')">Cancel Non-existent</button>
-                    <button class="btn btn-success" onclick="testLifecycle('update')">Update Order</button>
-                    <button class="btn btn-danger" onclick="testLifecycle('update-nonexistent')">Update Non-existent</button>
-                </div>
-            </div>
-
-            <div class="panel tab-content" id="tab-read">
-                <h2>Read Orders</h2>
-                <p class="section-desc">Query orders from the production DynamoDB table via GET /orders/{orderId}</p>
+            <!-- ===== TAB 2: CONSULTAR PEDIDO ===== -->
+            <div class="panel tab-content" id="tab-consult">
+                <h2>Consultar Pedido</h2>
+                <p class="section-desc">Busque um pedido na tabela DynamoDB pelo ID.</p>
 
                 <div class="form-group">
                     <label for="readOrderId">Order ID</label>
-                    <input type="text" id="readOrderId" placeholder="e.g. ORD-TEST-001">
+                    <div class="input-with-button">
+                        <input type="text" id="readOrderId" placeholder="Ex: ORD-TEST-001">
+                        <button class="btn btn-primary" onclick="testRead('valid')" id="btnReadOrder">Consultar</button>
+                    </div>
+                </div>
+
+                <div class="result-card result-empty" id="result-consult">
+                    <div class="result-placeholder">Digite um Order ID e clique em <strong>Consultar</strong>.</div>
+                </div>
+
+                <div class="button-group" id="consult-actions" style="display:none">
+                    <button class="btn btn-outline btn-sm next-step" onclick="switchTab('manage')">
+                        → Gerenciar este Pedido
+                    </button>
+                </div>
+            </div>
+
+            <!-- ===== TAB 3: GERENCIAR PEDIDO ===== -->
+            <div class="panel tab-content" id="tab-manage">
+                <h2>Gerenciar Pedido</h2>
+                <p class="section-desc">Cancele ou atualize um pedido existente via EventBridge.</p>
+
+                <div class="form-group">
+                    <label for="lifecycleOrderId">Order ID</label>
+                    <input type="text" id="lifecycleOrderId" placeholder="Ex: ORD-TEST-001">
+                </div>
+                <div class="form-group">
+                    <label for="updateItens">Novos Itens (JSON array) — usado apenas em <strong>Atualizar</strong></label>
+                    <textarea id="updateItens" rows="3">[{"nome": "Item Atualizado", "quantidade": 5, "preco": 150.0}]</textarea>
                 </div>
 
                 <div class="button-group">
-                    <button class="btn btn-primary" onclick="testRead('valid')">Read Order</button>
-                    <button class="btn btn-danger" onclick="testRead('nonexistent')">Read Non-existent</button>
+                    <button class="btn btn-success" onclick="testLifecycle('cancel')">Cancelar Pedido</button>
+                    <button class="btn btn-primary" onclick="testLifecycle('update')">Atualizar Pedido</button>
                 </div>
 
-                <div id="readResult" class="result-card" style="display:none">
-                    <h3>Order Details</h3>
-                    <pre id="readResultContent"></pre>
+                <details class="error-scenarios">
+                    <summary>🧪 Cenários de Erro</summary>
+                    <p class="scenario-hint">Teste o comportamento com pedidos que não existem.</p>
+                    <div class="button-group">
+                        <button class="btn btn-danger" onclick="testLifecycle('cancel-nonexistent')">Cancelar Inexistente</button>
+                        <button class="btn btn-danger" onclick="testLifecycle('update-nonexistent')">Atualizar Inexistente</button>
+                    </div>
+                </details>
+
+                <div class="result-card result-empty" id="result-manage">
+                    <div class="result-placeholder">Digite um Order ID e clique em <strong>Cancelar</strong> ou <strong>Atualizar</strong>.</div>
+                </div>
+            </div>
+
+            <!-- ===== TAB 4: UPLOAD EM LOTE ===== -->
+            <div class="panel tab-content" id="tab-batch">
+                <h2>Upload em Lote (S3)</h2>
+                <p class="section-desc">Faça upload de arquivos JSON para processamento em lote via S3 → SQS → File Validator → DynamoDB Audit.</p>
+
+                <div class="form-group">
+                    <label for="s3Filename">Nome do arquivo (prefixo)</label>
+                    <input type="text" id="s3Filename" value="pedidos_lote_" placeholder="Ex: pedidos_lote_">
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="testS3('valid')">Upload Lote Válido</button>
+                    <button class="btn btn-outline" onclick="testS3('list')">Listar Arquivos</button>
+                </div>
+
+                <details class="error-scenarios">
+                    <summary>🧪 Cenários de Erro</summary>
+                    <p class="scenario-hint">Teste o tratamento de arquivos inválidos.</p>
+                    <div class="button-group">
+                        <button class="btn btn-danger" onclick="testS3('invalid-schema')">Schema Inválido</button>
+                        <button class="btn btn-danger" onclick="testS3('corrupt')">Arquivo Corrompido</button>
+                    </div>
+                </details>
+
+                <div class="result-card result-empty" id="result-batch">
+                    <div class="result-placeholder">Clique em <strong>Upload Lote Válido</strong> para enviar um arquivo de teste.</div>
                 </div>
             </div>
         </div>
 
         <aside class="log-panel">
             <div class="log-header">
-                <h2>Results Log</h2>
-                <button class="btn btn-small btn-outline" onclick="clearLog()">Clear</button>
+                <h2>Log de Resultados</h2>
+                <button class="btn btn-small btn-outline" onclick="clearLog()">Limpar</button>
             </div>
             <div class="log-container" id="logContainer">
-                <p class="log-empty">Click any test button to start</p>
+                <p class="log-empty">Clique em qualquer ação para começar.</p>
             </div>
         </aside>
     </main>

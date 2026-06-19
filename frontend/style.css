@@ -53,7 +53,6 @@ header h1 {
 }
 
 .env-badge {
-    margin-left: auto;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -61,6 +60,28 @@ header h1 {
     font-size: 0.75rem;
     font-family: monospace;
     color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.last-order-badge {
+    background: rgba(88, 166, 255, 0.12);
+    border: 1px solid rgba(88, 166, 255, 0.3);
+    border-radius: var(--radius-sm);
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    color: var(--accent-blue);
+    white-space: nowrap;
+}
+
+.last-order-badge strong {
+    font-family: monospace;
 }
 
 .dashboard {
@@ -377,4 +398,213 @@ header h1 {
     header h1 {
         font-size: 1.1rem;
     }
+}
+
+/* ===== Collapsible Error Scenarios ===== */
+.error-scenarios {
+    margin-top: 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem 1rem;
+}
+
+.error-scenarios summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 0.25rem 0;
+    user-select: none;
+}
+
+.error-scenarios summary:hover {
+    color: var(--text-primary);
+}
+
+.error-scenarios[open] summary {
+    margin-bottom: 0.5rem;
+}
+
+.scenario-hint {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.error-scenarios .button-group {
+    margin-top: 0;
+}
+
+/* ===== Inline Result Cards ===== */
+.result-card {
+    margin-top: 1rem;
+    border-radius: var(--radius);
+    padding: 1rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.result-card .result-placeholder {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 0.5rem;
+}
+
+.result-card .result-label {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.result-card .result-timestamp {
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    margin-bottom: 0.5rem;
+}
+
+.result-card .result-status {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.result-card .result-status.status-pass {
+    background: var(--success-bg);
+    color: var(--accent-green);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.result-card .result-status.status-fail {
+    background: var(--error-bg);
+    color: var(--accent-red);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.result-card .result-status.status-warn {
+    background: var(--warn-bg);
+    color: var(--accent-orange);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.result-card .result-body {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    font-family: monospace;
+    font-size: 0.75rem;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 250px;
+    overflow-y: auto;
+    margin-top: 0.25rem;
+}
+
+.result-card .result-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.result-card .result-summary .field {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.4rem 0.6rem;
+}
+
+.result-card .result-summary .field .field-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.result-card .result-summary .field .field-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: monospace;
+}
+
+.result-empty {
+    border: 1px dashed var(--border);
+    background: transparent;
+}
+
+.result-pass {
+    border: 1px solid rgba(63, 185, 80, 0.4);
+    background: var(--success-bg);
+}
+
+.result-fail {
+    border: 1px solid rgba(248, 81, 73, 0.4);
+    background: var(--error-bg);
+}
+
+.result-warn {
+    border: 1px solid rgba(210, 153, 34, 0.4);
+    background: var(--warn-bg);
+}
+
+/* ===== Button Loading ===== */
+.btn-loading {
+    position: relative;
+    color: transparent !important;
+    pointer-events: none;
+}
+
+.btn-loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin: -8px 0 0 -8px;
+    border: 2px solid var(--text-secondary);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ===== Button Sizes ===== */
+.btn-lg {
+    padding: 0.65rem 1.5rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.btn-sm {
+    padding: 0.3rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+/* ===== Input with Button ===== */
+.input-with-button {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.input-with-button input {
+    flex: 1;
+}
+
+/* ===== Next Step Button ===== */
+.next-step {
+    color: var(--accent-blue) !important;
+    border-color: var(--accent-blue) !important;
+}
+
+.next-step:hover {
+    background: rgba(88, 166, 255, 0.15) !important;
 }
