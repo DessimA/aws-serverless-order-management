@@ -4,12 +4,16 @@ import boto3
 from datetime import datetime
 from botocore.exceptions import ClientError
 from common.sqs import parse_detail, parse_body
+from common.sns import publish_error
 
 DYNAMODB_TABLE = os.environ['DYNAMODB_TABLE']
+SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
+sns_client = boto3.client('sns')
 production_table = boto3.resource('dynamodb').Table(DYNAMODB_TABLE)
 
 def lambda_handler(event, context):
     print(f"Processing event from queue: {json.dumps(event)}")
+    batch_item_failures = []
 
     for record in event['Records']:
         try:
@@ -42,11 +46,16 @@ def lambda_handler(event, context):
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                 print(f"Order {order_id} already exists, skipping duplicate.")
+                if SNS_TOPIC_ARN:
+                    publish_error(sns_client, SNS_TOPIC_ARN, "Duplicate Order Detected", {
+                        'orderId': str(order_id),
+                        'message': 'Order already exists in production table, skipped.'
+                    })
             else:
                 print(f"DynamoDB error processing record: {str(e)}")
-                raise
+                batch_item_failures.append({"itemIdentifier": record['messageId']})
         except Exception as e:
             print(f"Error processing record: {str(e)}")
-            raise
+            batch_item_failures.append({"itemIdentifier": record['messageId']})
 
-    return {'statusCode': 200}
+    return {"batchItemFailures": batch_item_failures}

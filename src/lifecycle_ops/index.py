@@ -3,7 +3,10 @@ import boto3
 from datetime import datetime
 from botocore.exceptions import ClientError
 from common.sqs import parse_detail
+from common.sns import publish_error
 
+SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
+sns_client = boto3.client('sns')
 production_table = boto3.resource("dynamodb").Table(os.environ["DYNAMODB_TABLE"])
 
 
@@ -21,6 +24,7 @@ def _process(order_id, update_expression, expression_values):
 
 
 def _handler(event, context, operation):
+    batch_item_failures = []
     for record in event["Records"]:
         try:
             payload = parse_detail(record)
@@ -57,13 +61,19 @@ def _handler(event, context, operation):
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 action = "cancellation" if operation == "cancel" else "update"
                 print(f"Order not found for {action}, skipping.")
+                if SNS_TOPIC_ARN:
+                    publish_error(sns_client, SNS_TOPIC_ARN, f"Order Not Found for {action}", {
+                        'orderId': str(order_id),
+                        'operation': action,
+                        'message': f"Order does not exist, {action} skipped."
+                    })
             else:
                 print(f"DynamoDB error: {e}")
-                raise
+                batch_item_failures.append({"itemIdentifier": record['messageId']})
         except Exception as e:
             print(f"Error: {e}")
-            raise
-    return {"statusCode": 200}
+            batch_item_failures.append({"itemIdentifier": record['messageId']})
+    return {"batchItemFailures": batch_item_failures}
 
 
 def cancel_handler(event, context):
