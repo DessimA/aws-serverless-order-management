@@ -37,7 +37,8 @@ validate_not_empty "DLQ_ARN" "$DLQ_ARN" "Persister DLQ ARN"
 ensure_sqs_queue "$QUEUE_NAME" "$DLQ_ARN" "$AWS_REGION" "true" "true"
 
 # Inline policy (must be after QUEUE_ARN is resolved)
-aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "OrderProductionDynamoDB" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"dynamodb:PutItem\",\"dynamodb:UpdateItem\",\"dynamodb:GetItem\"],\"Resource\":\"$PRODUCTION_TABLE_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$QUEUE_ARN\"}]}"
+SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:order-notifications-$RESOURCE_SUFFIX" --query Attributes.TopicArn --output text --region "$AWS_REGION" 2>/dev/null || echo "")
+aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "OrderProductionDynamoDB" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"dynamodb:PutItem\",\"dynamodb:UpdateItem\",\"dynamodb:GetItem\"],\"Resource\":\"$PRODUCTION_TABLE_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$QUEUE_ARN\"},{\"Effect\":\"Allow\",\"Action\":\"sns:Publish\",\"Resource\":\"$SNS_TOPIC_ARN\"}]}"
 
 # === EventBridge Rule -> SQS ===
 aws events put-rule --name "$EVENTBRIDGE_RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --event-pattern '{"source":["app.orders.validation"],"detail-type":["OrderValidated"]}' --region "$AWS_REGION"
@@ -59,8 +60,8 @@ zip -qr "$SCRIPT_DIR/lambda_deploy.zip" .
 cd "$SCRIPT_DIR"
 rm -rf "$PKG_DIR"
 
-ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.lambda_handler" "lambda_deploy.zip" "$AWS_REGION" "$ACCOUNT_ID" "DYNAMODB_TABLE=$TABLE_NAME"
-validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"
+ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.lambda_handler" "lambda_deploy.zip" "$AWS_REGION" "$ACCOUNT_ID" "DYNAMODB_TABLE=$TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
+validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE" "SNS_TOPIC_ARN"
 
 ensure_event_source_mapping "$LAMBDA_NAME" "$QUEUE_ARN" "$AWS_REGION"
 
