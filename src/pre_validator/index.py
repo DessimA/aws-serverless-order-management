@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 import boto3
 from common.http import error_response, api_response
 
@@ -25,7 +26,7 @@ def lambda_handler(event, context):
         sqs_client.send_message(
             QueueUrl=SQS_QUEUE_URL,
             MessageGroupId=str(order_id),
-            MessageDeduplicationId=str(order_id),
+            MessageDeduplicationId=str(uuid.uuid4()),
             MessageBody=json.dumps(body)
         )
 
