@@ -27,22 +27,12 @@ fi
 validate_not_empty "BUCKET_NAME" "$BUCKET_NAME" "S3 Files Bucket"
 
 # === SQS Queues (Standard) ===
-if ! aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws sqs create-queue --queue-name "$DLQ_NAME" --region "$AWS_REGION"
-fi
-DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
+DLQ_ARN=$(ensure_sqs_dlq "$DLQ_NAME" "$AWS_REGION" "false")
 validate_not_empty "DLQ_ARN" "$DLQ_ARN" "S3 Batch DLQ ARN"
 
-if ! aws sqs get-queue-url --queue-name "$S3_EVENT_QUEUE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws sqs create-queue --queue-name "$S3_EVENT_QUEUE_NAME" --attributes "{\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
-fi
-S3_EVENT_QUEUE_URL=$(aws sqs get-queue-url --queue-name "$S3_EVENT_QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text)
-S3_EVENT_QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$S3_EVENT_QUEUE_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
-aws sqs set-queue-attributes --queue-url "$S3_EVENT_QUEUE_URL" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$AWS_REGION"
-wait_for_sqs_queue "$S3_EVENT_QUEUE_NAME" "$AWS_REGION"
-validate_not_empty "S3_EVENT_QUEUE_URL" "$S3_EVENT_QUEUE_URL" "S3 Batch Queue URL"
-validate_not_empty "S3_EVENT_QUEUE_ARN" "$S3_EVENT_QUEUE_ARN" "S3 Batch Queue ARN"
-validate_sqs_queue "$S3_EVENT_QUEUE_URL" "$AWS_REGION" ""
+ensure_sqs_queue "$S3_EVENT_QUEUE_NAME" "$DLQ_ARN" "$AWS_REGION" "false" ""
+S3_EVENT_QUEUE_URL="$QUEUE_URL"
+S3_EVENT_QUEUE_ARN="$QUEUE_ARN"
 
 # === DynamoDB Audit Table ===
 if ! aws dynamodb describe-table --table-name "$AUDIT_TABLE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
@@ -59,11 +49,7 @@ if ! aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_
 fi
 
 # === IAM Role ===
-if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
-    aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
-    aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-fi
-wait_for_iam_role "$ROLE_NAME"
+ensure_iam_lambda_role "$ROLE_NAME"
 aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "FileValidatorAccess" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\"],\"Resource\":\"arn:aws:s3:::$BUCKET_NAME/*\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$S3_EVENT_QUEUE_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"dynamodb:PutItem\"],\"Resource\":\"arn:aws:dynamodb:$AWS_REGION:$ACCOUNT_ID:table/$AUDIT_TABLE_NAME\"},{\"Effect\":\"Allow\",\"Action\":\"sns:Publish\",\"Resource\":\"arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME\"}]}"
 
 # === S3 → SQS Notification ===
@@ -79,29 +65,13 @@ cd ../src/batch_processor
 zip -q ../../scripts/lambda_deploy.zip index.py
 cd ../../scripts
 
-if ! aws lambda get-function --function-name "$LAMBDA_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-    echo "Criando funcao Lambda $LAMBDA_NAME..."
-    for i in {1..3}; do
-        aws lambda create-function --function-name "$LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME" --handler index.lambda_handler --zip-file fileb://lambda_deploy.zip --timeout 60 --region "$AWS_REGION" && break || sleep 10
-    done
-    aws lambda wait function-active-v2 --function-name "$LAMBDA_NAME" --region "$AWS_REGION"
-else
-    aws lambda update-function-code --function-name "$LAMBDA_NAME" --zip-file fileb://lambda_deploy.zip --region "$AWS_REGION"
-    aws lambda wait function-updated-v2 --function-name "$LAMBDA_NAME" --region "$AWS_REGION"
-fi
-
 SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME" --query Attributes.TopicArn --output text --region "$AWS_REGION")
 validate_not_empty "SNS_TOPIC_ARN" "$SNS_TOPIC_ARN" "SNS Topic ARN"
 sns_subscribe_email "$SNS_TOPIC_ARN" "$NOTIFICATION_EMAIL" "$AWS_REGION"
-aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --timeout 60 --environment "Variables={DYNAMODB_TABLE=$AUDIT_TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN}" --region "$AWS_REGION"
-validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"
-validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "SNS_TOPIC_ARN"
 
-# === SQS → Lambda event source mapping ===
-EVENT_SOURCE_MAPPING_UUID=$(aws lambda list-event-source-mappings --function-name "$LAMBDA_NAME" --event-source-arn "$S3_EVENT_QUEUE_ARN" --region "$AWS_REGION" --query "EventSourceMappings[0].UUID" --output text)
-if [ -z "$EVENT_SOURCE_MAPPING_UUID" ] || [ "$EVENT_SOURCE_MAPPING_UUID" == "None" ]; then
-    aws lambda create-event-source-mapping --function-name "$LAMBDA_NAME" --batch-size 5 --event-source-arn "$S3_EVENT_QUEUE_ARN" --region "$AWS_REGION"
-fi
-validate_esm "$LAMBDA_NAME" "$S3_EVENT_QUEUE_ARN" "$AWS_REGION"
+ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.lambda_handler" "lambda_deploy.zip" "$AWS_REGION" "$ACCOUNT_ID" "DYNAMODB_TABLE=$AUDIT_TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
+validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE" "SNS_TOPIC_ARN"
+
+ensure_event_source_mapping "$LAMBDA_NAME" "$S3_EVENT_QUEUE_ARN" "$AWS_REGION"
 
 rm -f lambda_deploy.zip
