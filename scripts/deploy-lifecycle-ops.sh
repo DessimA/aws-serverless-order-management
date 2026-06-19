@@ -29,31 +29,16 @@ deploy_lifecycle_handler() {
     esac
 
     # ========== SQS Queues ==========
-    if ! aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-        aws sqs create-queue --queue-name "$DLQ_NAME" --attributes "{\"FifoQueue\":\"true\"}" --region "$AWS_REGION"
-    fi
     local DLQ_ARN
-    DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
+    DLQ_ARN=$(ensure_sqs_dlq "$DLQ_NAME" "$AWS_REGION" "true")
     validate_not_empty "DLQ_ARN" "$DLQ_ARN" "Lifecycle $OPERATION DLQ ARN"
 
-    if ! aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-        aws sqs create-queue --queue-name "$QUEUE_NAME" --attributes "{\"FifoQueue\":\"true\",\"ContentBasedDeduplication\":\"true\",\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
-    fi
-    local QUEUE_URL QUEUE_ARN
-    QUEUE_URL=$(aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text)
-    QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$QUEUE_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
-    aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$AWS_REGION"
-    wait_for_sqs_queue "$QUEUE_NAME" "$AWS_REGION"
-    validate_not_empty "QUEUE_URL" "$QUEUE_URL" "Lifecycle $OPERATION Queue URL"
-    validate_not_empty "QUEUE_ARN" "$QUEUE_ARN" "Lifecycle $OPERATION Queue ARN"
-    validate_sqs_queue "$QUEUE_URL" "$AWS_REGION" "true"
+    ensure_sqs_queue "$QUEUE_NAME" "$DLQ_ARN" "$AWS_REGION" "true" "true"
+    local QUEUE_URL="$QUEUE_URL"
+    local QUEUE_ARN="$QUEUE_ARN"
 
     # ========== IAM ==========
-    if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
-        aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
-        aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-    fi
-    wait_for_iam_role "$ROLE_NAME"
+    ensure_iam_lambda_role "$ROLE_NAME"
     aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "OrderLifecycleDynamoDB" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"dynamodb:UpdateItem\",\"dynamodb:GetItem\"],\"Resource\":\"$PRODUCTION_TABLE_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$QUEUE_ARN\"}]}"
 
     # ========== EventBridge Rule -> SQS ==========
@@ -68,29 +53,13 @@ deploy_lifecycle_handler() {
     # ========== Lambda Deployment ==========
     local SRC_DIR="../src/lifecycle_ops"
     cd "$SRC_DIR"
-    zip -q "../../scripts/lambda_deploy_${OPERATION}.zip" "${OPERATION}_order.py"
+    zip -q "../../scripts/lambda_deploy_${OPERATION}.zip" "index.py"
     cd "$SCRIPT_DIR"
 
-    if ! aws lambda get-function --function-name "$LAMBDA_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-        echo "Criando funcao Lambda $LAMBDA_NAME..."
-        for i in {1..3}; do
-            aws lambda create-function --function-name "$LAMBDA_NAME" --runtime python3.12 --role "arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME" --handler "${OPERATION}_order.lambda_handler" --zip-file "fileb://lambda_deploy_${OPERATION}.zip" --timeout 60 --region "$AWS_REGION" && break || sleep 10
-        done
-        aws lambda wait function-active-v2 --function-name "$LAMBDA_NAME" --region "$AWS_REGION"
-    else
-        aws lambda update-function-code --function-name "$LAMBDA_NAME" --zip-file "fileb://lambda_deploy_${OPERATION}.zip" --region "$AWS_REGION"
-        aws lambda wait function-updated-v2 --function-name "$LAMBDA_NAME" --region "$AWS_REGION"
-    fi
-
-    aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --timeout 60 --environment "Variables={DYNAMODB_TABLE=$TABLE_NAME}" --region "$AWS_REGION"
+    ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.${OPERATION}_handler" "lambda_deploy_${OPERATION}.zip" "$AWS_REGION" "$ACCOUNT_ID" "DYNAMODB_TABLE=$TABLE_NAME"
     validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"
 
-    # ========== SQS -> Lambda Event Source Mapping ==========
-    ESM_UUID=$(aws lambda list-event-source-mappings --function-name "$LAMBDA_NAME" --event-source-arn "$QUEUE_ARN" --region "$AWS_REGION" --query "EventSourceMappings[0].UUID" --output text)
-    if [ -z "$ESM_UUID" ] || [ "$ESM_UUID" == "None" ]; then
-        aws lambda create-event-source-mapping --function-name "$LAMBDA_NAME" --batch-size 5 --event-source-arn "$QUEUE_ARN" --region "$AWS_REGION"
-    fi
-    validate_esm "$LAMBDA_NAME" "$QUEUE_ARN" "$AWS_REGION"
+    ensure_event_source_mapping "$LAMBDA_NAME" "$QUEUE_ARN" "$AWS_REGION"
 
     rm -f "lambda_deploy_${OPERATION}.zip"
 }
