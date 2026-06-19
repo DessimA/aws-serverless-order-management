@@ -90,20 +90,32 @@ def handle_upload_file(body):
 
 def handle_list_files(body):
     prefix = body.get('prefix', '')
-
-    response = s3_client.list_objects_v2(
-        Bucket=S3_BUCKET,
-        Prefix=prefix
-    )
-
+    max_keys = 1000
     files = []
-    if 'Contents' in response:
-        for obj in response['Contents']:
-            files.append({
-                'key': obj['Key'],
-                'size': obj['Size'],
-                'lastModified': obj['LastModified'].isoformat() if hasattr(obj['LastModified'], 'isoformat') else str(obj['LastModified'])
-            })
+    continuation_token = None
+
+    while True:
+        params = {
+            'Bucket': S3_BUCKET,
+            'Prefix': prefix,
+            'MaxKeys': max_keys,
+        }
+        if continuation_token:
+            params['ContinuationToken'] = continuation_token
+
+        response = s3_client.list_objects_v2(**params)
+
+        if 'Contents' in response:
+            for obj in response['Contents']:
+                files.append({
+                    'key': obj['Key'],
+                    'size': obj['Size'],
+                    'lastModified': obj['LastModified'].isoformat() if hasattr(obj['LastModified'], 'isoformat') else str(obj['LastModified'])
+                })
+
+        if not response.get('IsTruncated'):
+            break
+        continuation_token = response.get('NextContinuationToken')
 
     return api_response(200, {
         'bucket': S3_BUCKET,

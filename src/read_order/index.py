@@ -23,7 +23,8 @@ def lambda_handler(event, context):
 
         return api_response(200, result["Item"])
 
-    except ClientError:
+    except ClientError as e:
+        print(f"DynamoDB ClientError reading order: {e}")
         return error_response(500, "Internal server error")
     except Exception as e:
         print(f"Unexpected error: {e}")
