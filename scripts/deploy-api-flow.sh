@@ -55,6 +55,7 @@ if ! aws sqs get-queue-url --queue-name "$VALIDATION_DLQ" --region "$AWS_REGION"
     aws sqs create-queue --queue-name "$VALIDATION_DLQ" --attributes "{\"FifoQueue\":\"true\"}" --region "$AWS_REGION"
 fi
 VALIDATION_DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$VALIDATION_DLQ" --region "$AWS_REGION" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
+validate_not_empty "VALIDATION_DLQ_ARN" "$VALIDATION_DLQ_ARN" "Validation DLQ ARN"
 
 if ! aws sqs get-queue-url --queue-name "$VALIDATION_BUFFER_QUEUE" --region "$AWS_REGION" >/dev/null 2>&1; then
     aws sqs create-queue --queue-name "$VALIDATION_BUFFER_QUEUE" --attributes "{\"FifoQueue\":\"true\",\"ContentBasedDeduplication\":\"true\",\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$VALIDATION_DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"

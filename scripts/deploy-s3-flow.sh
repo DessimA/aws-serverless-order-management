@@ -24,12 +24,14 @@ if ! aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 2>/dev
     aws s3api put-bucket-notification-configuration --bucket "$BUCKET_NAME" \
         --notification-configuration '{"QueueConfigurations":[]}' --region "$AWS_REGION"
 fi
+validate_not_empty "BUCKET_NAME" "$BUCKET_NAME" "S3 Files Bucket"
 
 # === SQS Queues (Standard) ===
 if ! aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
     aws sqs create-queue --queue-name "$DLQ_NAME" --region "$AWS_REGION"
 fi
 DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$DLQ_NAME" --region "$AWS_REGION" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
+validate_not_empty "DLQ_ARN" "$DLQ_ARN" "S3 Batch DLQ ARN"
 
 if ! aws sqs get-queue-url --queue-name "$S3_EVENT_QUEUE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
     aws sqs create-queue --queue-name "$S3_EVENT_QUEUE_NAME" --attributes "{\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$AWS_REGION"
@@ -89,6 +91,7 @@ else
 fi
 
 SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME" --query Attributes.TopicArn --output text --region "$AWS_REGION")
+validate_not_empty "SNS_TOPIC_ARN" "$SNS_TOPIC_ARN" "SNS Topic ARN"
 sns_subscribe_email "$SNS_TOPIC_ARN" "$NOTIFICATION_EMAIL" "$AWS_REGION"
 aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --timeout 60 --environment "Variables={DYNAMODB_TABLE=$AUDIT_TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN}" --region "$AWS_REGION"
 validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"
