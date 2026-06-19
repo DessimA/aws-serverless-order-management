@@ -35,8 +35,8 @@ if [ -z "$REST_API_ID" ] || [ "$REST_API_ID" == "None" ]; then
     echo "FAIL: Could not find REST API named $INGESTION_API_NAME"
     exit 1
 fi
-ENDPOINT="https://${REST_API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod/orders"
-FRONTEND_URL="http://order-frontend-${RESOURCE_SUFFIX}.s3-website.${AWS_REGION}.amazonaws.com"
+ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders")
+FRONTEND_URL=$(get_endpoint_url "s3-website" "order-frontend-${RESOURCE_SUFFIX}")
 
 ORDER_ID="ORD-$(date +%s)-$$"
 RESPONSE=$(curl -s -X POST "$ENDPOINT" \
@@ -50,8 +50,9 @@ else
     echo "      (may still propagate; continuing...)"
 fi
 
-echo "Waiting 20s for SQS FIFO + LambdaVal + EventBridge + SQS + LambdaPend processing..."
-sleep 20
+echo "Waiting for SQS FIFO + LambdaVal + EventBridge + SQS + LambdaPend processing..."
+poll_resource "order $ORDER_ID in DynamoDB with status PROCESSED" 12 10 \
+    "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'PROCESSED'" || true
 
 echo "--- Verifying DynamoDB production: order $ORDER_ID ---"
 DDB_RESULT=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$ORDER_ID\"}}" --region "$AWS_REGION" 2>&1)
@@ -74,8 +75,9 @@ else
     echo "WARN: Duplicate API response: $DUP_RESPONSE"
 fi
 
-echo "Waiting 20s for duplicate processing..."
-sleep 20
+echo "Waiting for duplicate processing..."
+poll_resource "duplicate order $ORDER_ID stability" 12 10 \
+    "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'PROCESSED'" || true
 
 echo "--- Verifying duplicate did NOT overwrite ---"
 DUP_DDB=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$ORDER_ID\"}}" --region "$AWS_REGION" 2>&1)
@@ -102,8 +104,9 @@ else
     echo "FAIL: Upload failed"
 fi
 
-echo "Waiting 20s for SQS + LambdaFileVal processing..."
-sleep 20
+echo "Waiting for SQS + LambdaFileVal processing..."
+poll_resource "S3 batch audit record with status PROCESSED" 12 10 \
+    "aws dynamodb query --table-name \"$AUDIT_TABLE\" --key-condition-expression 'file_name = :f' --expression-attribute-values '{\":f\":{\"S\":\"$S3_KEY\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'PROCESSED'" || true
 
 echo "--- Checking S3 batch audit table (should have PROCESSED entry) ---"
 AUDIT_TABLE="order-batch-audit-${RESOURCE_SUFFIX}"
@@ -130,8 +133,9 @@ CANCEL_DETAIL="{\"pedidoId\":\"$ORDER_ID\"}"
 CANCEL_DETAIL_ESCAPED=$(echo "$CANCEL_DETAIL" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))' | sed 's/^"//;s/"$//')
 aws events put-events --region "$AWS_REGION" --entries "[{\"Source\":\"app.orders.operations\",\"DetailType\":\"OrderCancelled\",\"Detail\":\"$CANCEL_DETAIL_ESCAPED\",\"EventBusName\":\"$EVENT_BUS_NAME\"}]" >/dev/null 2>&1 && echo "PASS: Cancel event published" || echo "WARN: Could not publish cancel event"
 
-echo "Waiting 15s for cancel processing..."
-sleep 15
+echo "Waiting for cancel processing..."
+poll_resource "order $ORDER_ID with status CANCELLED" 12 10 \
+    "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'CANCELLED'" || true
 
 CANCEL_RESULT=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$ORDER_ID\"}}" --region "$AWS_REGION" 2>&1)
 if echo "$CANCEL_RESULT" | grep -q "CANCELLED"; then
@@ -148,8 +152,9 @@ UPDATE_DETAIL="{\"pedidoId\":\"$ORDER_ID\",\"novosItens\":[{\"sku\":\"ITEM-ATUAL
 UPDATE_DETAIL_ESCAPED=$(echo "$UPDATE_DETAIL" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))' | sed 's/^"//;s/"$//')
 aws events put-events --region "$AWS_REGION" --entries "[{\"Source\":\"app.orders.operations\",\"DetailType\":\"OrderUpdated\",\"Detail\":\"$UPDATE_DETAIL_ESCAPED\",\"EventBusName\":\"$EVENT_BUS_NAME\"}]" >/dev/null 2>&1 && echo "PASS: Update event published" || echo "WARN: Could not publish update event"
 
-echo "Waiting 15s for update processing..."
-sleep 15
+echo "Waiting for update processing..."
+poll_resource "order $ORDER_ID with status UPDATED" 12 10 \
+    "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'UPDATED'" || true
 
 UPDATE_RESULT=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$ORDER_ID\"}}" --region "$AWS_REGION" 2>&1)
 if echo "$UPDATE_RESULT" | grep -q "UPDATED"; then
@@ -162,7 +167,7 @@ fi
 # === 5. Read Order via API Gateway ===
 echo ""
 echo "--- Test 5: GET /orders/{orderId} via read_order Lambda ---"
-READ_ENDPOINT="https://${REST_API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod/orders/${ORDER_ID}"
+READ_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders/${ORDER_ID}")
 READ_RESPONSE=$(curl -s "$READ_ENDPOINT" 2>&1 || echo "CURL_FAILED:$?")
 if echo "$READ_RESPONSE" | grep -q "PROCESSED"; then
     echo "PASS: GET /orders/$ORDER_ID returned order with status PROCESSED"
@@ -177,7 +182,7 @@ fi
 # === 6. Test Controller: publish_event ===
 echo ""
 echo "--- Test 6: test_controller publish_event ---"
-TEST_ENDPOINT="https://${REST_API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod/test"
+TEST_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/test")
 CTRL_EVENT_RESPONSE=$(curl -s -X POST "$TEST_ENDPOINT" \
   -H "Content-Type: application/json" \
   -d "{\"action\":\"publish_event\",\"detailType\":\"OrderCancelled\",\"detail\":{\"pedidoId\":\"CTRL-TEST-$(date +%s)\"}}" 2>&1 || echo "CURL_FAILED:$?")
