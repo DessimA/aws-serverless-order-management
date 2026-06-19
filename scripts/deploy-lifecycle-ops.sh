@@ -42,6 +42,9 @@ deploy_lifecycle_handler() {
     QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$QUEUE_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
     aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$AWS_REGION"
     wait_for_sqs_queue "$QUEUE_NAME" "$AWS_REGION"
+    validate_not_empty "QUEUE_URL" "$QUEUE_URL" "Lifecycle $OPERATION Queue URL"
+    validate_not_empty "QUEUE_ARN" "$QUEUE_ARN" "Lifecycle $OPERATION Queue ARN"
+    validate_sqs_queue "$QUEUE_URL" "$AWS_REGION" "true"
 
     # ========== IAM ==========
     if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
@@ -54,8 +57,11 @@ deploy_lifecycle_handler() {
     # ========== EventBridge Rule -> SQS ==========
     aws events put-rule --name "$RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --event-pattern "{\"source\":[\"app.orders.operations\"],\"detail-type\":[\"$DETAIL_TYPE\"]}" --region "$AWS_REGION"
     put_eventbridge_target "$RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "order-lifecycle-${OPERATION}" "$AWS_REGION"
+    validate_eventbridge_target "$RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "$AWS_REGION"
 
-    aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"$QUEUE_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:aws:events:$AWS_REGION:$ACCOUNT_ID:rule/$EVENT_BUS_NAME/$RULE_NAME\\\"}}}]}\"}" --region "$AWS_REGION"
+    local LIFECYCLE_RULE_ARN="arn:aws:events:$AWS_REGION:$ACCOUNT_ID:rule/$EVENT_BUS_NAME/$RULE_NAME"
+    aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"$QUEUE_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"$LIFECYCLE_RULE_ARN\\\"}}}]}\"}" --region "$AWS_REGION"
+    validate_sqs_policy "$QUEUE_URL" "$AWS_REGION" "$QUEUE_ARN" "events.amazonaws.com" "sqs:SendMessage" "$LIFECYCLE_RULE_ARN"
 
     # ========== Lambda Deployment ==========
     local SRC_DIR="../src/lifecycle_ops"
@@ -75,12 +81,14 @@ deploy_lifecycle_handler() {
     fi
 
     aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --timeout 60 --environment "Variables={DYNAMODB_TABLE=$TABLE_NAME}" --region "$AWS_REGION"
+    validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"
 
     # ========== SQS -> Lambda Event Source Mapping ==========
     ESM_UUID=$(aws lambda list-event-source-mappings --function-name "$LAMBDA_NAME" --event-source-arn "$QUEUE_ARN" --region "$AWS_REGION" --query "EventSourceMappings[0].UUID" --output text)
     if [ -z "$ESM_UUID" ] || [ "$ESM_UUID" == "None" ]; then
         aws lambda create-event-source-mapping --function-name "$LAMBDA_NAME" --batch-size 5 --event-source-arn "$QUEUE_ARN" --region "$AWS_REGION"
     fi
+    validate_esm "$LAMBDA_NAME" "$QUEUE_ARN" "$AWS_REGION"
 
     rm -f "lambda_deploy_${OPERATION}.zip"
 }

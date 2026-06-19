@@ -25,6 +25,7 @@ if ! aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$AWS_REGIO
     aws dynamodb wait table-exists --table-name "$TABLE_NAME" --region "$AWS_REGION"
 fi
 PRODUCTION_TABLE_ARN=$(aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$AWS_REGION" --query Table.TableArn --output text)
+validate_not_empty "PRODUCTION_TABLE_ARN" "$PRODUCTION_TABLE_ARN" "DynamoDB Table ARN"
 
 # === IAM Role ===
 if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
@@ -46,6 +47,9 @@ QUEUE_URL=$(aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$AWS_REGI
 QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$QUEUE_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
 aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$AWS_REGION"
 wait_for_sqs_queue "$QUEUE_NAME" "$AWS_REGION"
+validate_not_empty "QUEUE_URL" "$QUEUE_URL" "Persister Queue URL"
+validate_not_empty "QUEUE_ARN" "$QUEUE_ARN" "Persister Queue ARN"
+validate_sqs_queue "$QUEUE_URL" "$AWS_REGION" "true"
 
 # Inline policy (must be after QUEUE_ARN is resolved)
 aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "OrderProductionDynamoDB" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"dynamodb:PutItem\",\"dynamodb:UpdateItem\",\"dynamodb:GetItem\"],\"Resource\":\"$PRODUCTION_TABLE_ARN\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"$QUEUE_ARN\"}]}"
@@ -53,9 +57,12 @@ aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "OrderProductionD
 # === EventBridge Rule -> SQS ===
 aws events put-rule --name "$EVENTBRIDGE_RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --event-pattern '{"source":["app.orders.validation"],"detail-type":["OrderValidated"]}' --region "$AWS_REGION"
 put_eventbridge_target "$EVENTBRIDGE_RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "order-persister" "$AWS_REGION"
+validate_eventbridge_target "$EVENTBRIDGE_RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "$AWS_REGION"
 
 # SqS Queue Policy for EventBridge
-aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"$QUEUE_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:aws:events:$AWS_REGION:$ACCOUNT_ID:rule/$EVENT_BUS_NAME/$EVENTBRIDGE_RULE_NAME\\\"}}}]}\"}" --region "$AWS_REGION"
+RULE_ARN="arn:aws:events:$AWS_REGION:$ACCOUNT_ID:rule/$EVENT_BUS_NAME/$EVENTBRIDGE_RULE_NAME"
+aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"$QUEUE_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"$RULE_ARN\\\"}}}]}\"}" --region "$AWS_REGION"
+validate_sqs_policy "$QUEUE_URL" "$AWS_REGION" "$QUEUE_ARN" "events.amazonaws.com" "sqs:SendMessage" "$RULE_ARN"
 
 # === Lambda Deployment ===
 cd ../src/order_processor
@@ -74,11 +81,13 @@ else
 fi
 
 aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --timeout 60 --environment "Variables={DYNAMODB_TABLE=$TABLE_NAME}" --region "$AWS_REGION"
+validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"
 
 # === SQS -> Lambda Event Source Mapping ===
 ESM_UUID=$(aws lambda list-event-source-mappings --function-name "$LAMBDA_NAME" --event-source-arn "$QUEUE_ARN" --region "$AWS_REGION" --query "EventSourceMappings[0].UUID" --output text)
 if [ -z "$ESM_UUID" ] || [ "$ESM_UUID" == "None" ]; then
     aws lambda create-event-source-mapping --function-name "$LAMBDA_NAME" --batch-size 5 --event-source-arn "$QUEUE_ARN" --region "$AWS_REGION"
 fi
+validate_esm "$LAMBDA_NAME" "$QUEUE_ARN" "$AWS_REGION"
 
 rm -f lambda_deploy.zip

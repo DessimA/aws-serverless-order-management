@@ -33,12 +33,14 @@ if ! aws dynamodb describe-table --table-name "$PRODUCTION_TABLE" --region "$AWS
     exit 1
 fi
 PRODUCTION_TABLE_ARN=$(aws dynamodb describe-table --table-name "$PRODUCTION_TABLE" --region "$AWS_REGION" --query Table.TableArn --output text)
+validate_not_empty "PRODUCTION_TABLE_ARN" "$PRODUCTION_TABLE_ARN" "Production Table ARN"
 
 if ! aws events describe-event-bus --name "$EVENT_BUS_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
     echo "ERRO: EventBus $EVENT_BUS_NAME not found. Deploy api-flow first."
     exit 1
 fi
 EVENT_BUS_ARN=$(aws events describe-event-bus --name "$EVENT_BUS_NAME" --region "$AWS_REGION" --query Arn --output text)
+validate_not_empty "EVENT_BUS_ARN" "$EVENT_BUS_ARN" "EventBus ARN"
 
 if ! aws s3api head-bucket --bucket "$FRONTEND_BUCKET" --region "$AWS_REGION" 2>/dev/null; then
     aws s3api create-bucket --bucket "$FRONTEND_BUCKET" --region "$AWS_REGION" \
@@ -128,10 +130,13 @@ deploy_lambda() {
 deploy_lambda "$READER_LAMBDA_NAME" "$READER_ROLE_NAME" "../src/read_order" "index.lambda_handler" "lambda_deploy_reader.zip"
 aws lambda update-function-configuration --function-name "$READER_LAMBDA_NAME" \
     --timeout 60 --environment "Variables={DYNAMODB_TABLE=$PRODUCTION_TABLE}" --region "$AWS_REGION"
+validate_lambda_config "$READER_LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"
 
 deploy_lambda "$CTRL_LAMBDA_NAME" "$CTRL_ROLE_NAME" "../src/test_controller" "index.lambda_handler" "lambda_deploy_ctrl.zip"
 aws lambda update-function-configuration --function-name "$CTRL_LAMBDA_NAME" \
     --timeout 60 --environment "Variables={EVENT_BUS_NAME=$EVENT_BUS_NAME,S3_BUCKET=$S3_BUCKET}" --region "$AWS_REGION"
+validate_lambda_config "$CTRL_LAMBDA_NAME" "$AWS_REGION" "EVENT_BUS_NAME"
+validate_lambda_config "$CTRL_LAMBDA_NAME" "$AWS_REGION" "S3_BUCKET"
 
 # ================================================================
 # API GATEWAY — ADD NEW RESOURCES
@@ -139,6 +144,7 @@ aws lambda update-function-configuration --function-name "$CTRL_LAMBDA_NAME" \
 
 REST_API_ID=$(aws apigateway get-rest-apis --region "$AWS_REGION" \
     --query "items[?name=='$REST_API_NAME'].id" --output text)
+validate_not_empty "REST_API_ID" "$REST_API_ID" "REST API ID"
 
 if [ -z "$REST_API_ID" ] || [ "$REST_API_ID" == "None" ]; then
     echo "ERRO: REST API $REST_API_NAME not found. Deploy api-flow first."
@@ -165,6 +171,7 @@ if [ -z "$ORDER_ID_RESOURCE_ID" ] || [ "$ORDER_ID_RESOURCE_ID" == "None" ]; then
         --parent-id "$ORDERS_RESOURCE_ID" --path-part "{orderId}" --region "$AWS_REGION" --query id --output text)
     echo "Created resource /orders/{orderId}"
 fi
+validate_not_empty "ORDER_ID_RESOURCE_ID" "$ORDER_ID_RESOURCE_ID" "/orders/{orderId} resource ID"
 
 # GET /orders/{orderId} → read_order
 if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$ORDER_ID_RESOURCE_ID" --http-method GET --region "$AWS_REGION" >/dev/null 2>&1; then
@@ -213,6 +220,7 @@ if [ -z "$TEST_RESOURCE_ID" ] || [ "$TEST_RESOURCE_ID" == "None" ]; then
         --parent-id "$ROOT_RESOURCE_ID" --path-part "test" --region "$AWS_REGION" --query id --output text)
     echo "Created resource /test"
 fi
+validate_not_empty "TEST_RESOURCE_ID" "$TEST_RESOURCE_ID" "/test resource ID"
 
 # POST /test → test_controller
 if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method POST --region "$AWS_REGION" >/dev/null 2>&1; then
@@ -278,6 +286,8 @@ sed -i "s|__AWS_REGION__|$AWS_REGION|g" "$BUILD_DIR/config.js"
 
 # Sync to S3
 aws s3 sync "$BUILD_DIR/" "s3://${FRONTEND_BUCKET}/" --region "$AWS_REGION" --delete
+aws s3api head-object --bucket "$FRONTEND_BUCKET" --key "index.html" --region "$AWS_REGION" >/dev/null 2>&1 || { echo "FALHA: index.html not found in frontend bucket after sync" >&2; exit 1; }
+aws s3api head-object --bucket "$FRONTEND_BUCKET" --key "config.js" --region "$AWS_REGION" >/dev/null 2>&1 || { echo "FALHA: config.js not found in frontend bucket after sync" >&2; exit 1; }
 rm -rf "$BUILD_DIR"
 
 # Update the env badge in index.html so it shows the endpoint

@@ -29,13 +29,15 @@ if ! aws events describe-event-bus --name "$EVENT_BUS_NAME" --region "$AWS_REGIO
     aws events create-event-bus --name "$EVENT_BUS_NAME" --region "$AWS_REGION"
 fi
 EVENT_BUS_ARN=$(aws events describe-event-bus --name "$EVENT_BUS_NAME" --region "$AWS_REGION" --query Arn --output text)
+validate_not_empty "EVENT_BUS_ARN" "$EVENT_BUS_ARN" "EventBus ARN"
 
 # === SNS Topic (shared across flows) ===
 if ! aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
     aws sns create-topic --name "$SNS_TOPIC_NAME" --region "$AWS_REGION"
 fi
 SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME" --query Attributes.TopicArn --output text --region "$AWS_REGION")
-aws sns subscribe --topic-arn "$SNS_TOPIC_ARN" --protocol email --notification-endpoint "$NOTIFICATION_EMAIL" --region "$AWS_REGION" 2>/dev/null || true
+validate_not_empty "SNS_TOPIC_ARN" "$SNS_TOPIC_ARN" "SNS Topic ARN"
+sns_subscribe_email "$SNS_TOPIC_ARN" "$NOTIFICATION_EMAIL" "$AWS_REGION"
 
 # ================================================================
 # LAMBDA PRE-VALIDATOR (LambdaPre: API Gateway → SQS FIFO)
@@ -61,6 +63,9 @@ VALIDATION_BUFFER_URL=$(aws sqs get-queue-url --queue-name "$VALIDATION_BUFFER_Q
 VALIDATION_BUFFER_ARN=$(aws sqs get-queue-attributes --queue-url "$VALIDATION_BUFFER_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$AWS_REGION")
 aws sqs set-queue-attributes --queue-url "$VALIDATION_BUFFER_URL" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$AWS_REGION"
 wait_for_sqs_queue "$VALIDATION_BUFFER_QUEUE" "$AWS_REGION"
+validate_not_empty "VALIDATION_BUFFER_URL" "$VALIDATION_BUFFER_URL" "SQS Buffer Queue URL"
+validate_not_empty "VALIDATION_BUFFER_ARN" "$VALIDATION_BUFFER_ARN" "SQS Buffer Queue ARN"
+validate_sqs_queue "$VALIDATION_BUFFER_URL" "$AWS_REGION" "true"
 
 # Inline policy for LambdaPre: sqs:SendMessage
 aws iam put-role-policy --role-name "$PRE_ROLE_NAME" --policy-name "PreValidatorSQSAccess" --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sqs:SendMessage\",\"Resource\":\"$VALIDATION_BUFFER_ARN\"}]}"
@@ -82,6 +87,7 @@ else
 fi
 
 aws lambda update-function-configuration --function-name "$PRE_LAMBDA_NAME" --timeout 60 --environment "Variables={SQS_QUEUE_URL=$VALIDATION_BUFFER_URL}" --region "$AWS_REGION"
+validate_lambda_config "$PRE_LAMBDA_NAME" "$AWS_REGION" "SQS_QUEUE_URL"
 rm -f lambda_deploy_pre.zip
 
 # ================================================================
@@ -113,6 +119,7 @@ else
 fi
 
 aws lambda update-function-configuration --function-name "$VAL_LAMBDA_NAME" --timeout 60 --environment "Variables={EVENT_BUS_NAME=$EVENT_BUS_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN}" --region "$AWS_REGION"
+validate_lambda_config "$VAL_LAMBDA_NAME" "$AWS_REGION" "EVENT_BUS_NAME" "SNS_TOPIC_ARN"
 rm -f lambda_deploy_val.zip
 
 # === SQS FIFO → LambdaVal event source mapping ===
@@ -120,6 +127,7 @@ ESM_UUID=$(aws lambda list-event-source-mappings --function-name "$VAL_LAMBDA_NA
 if [ -z "$ESM_UUID" ] || [ "$ESM_UUID" == "None" ]; then
     aws lambda create-event-source-mapping --function-name "$VAL_LAMBDA_NAME" --batch-size 5 --event-source-arn "$VALIDATION_BUFFER_ARN" --region "$AWS_REGION"
 fi
+validate_esm "$VAL_LAMBDA_NAME" "$VALIDATION_BUFFER_ARN" "$AWS_REGION"
 
 # ================================================================
 # API GATEWAY → LambdaPre
@@ -129,11 +137,13 @@ REST_API_ID=$(aws apigateway get-rest-apis --region "$AWS_REGION" --query "items
 if [ -z "$REST_API_ID" ] || [ "$REST_API_ID" == "None" ]; then
     REST_API_ID=$(aws apigateway create-rest-api --name "$REST_API_NAME" --region "$AWS_REGION" --query id --output text)
 fi
+validate_not_empty "REST_API_ID" "$REST_API_ID" "REST API ID"
 API_ROOT_RESOURCE_ID=$(aws apigateway get-resources --rest-api-id "$REST_API_ID" --region "$AWS_REGION" --query "items[?path=='/'].id" --output text)
 ORDERS_RESOURCE_ID=$(aws apigateway get-resources --rest-api-id "$REST_API_ID" --region "$AWS_REGION" --query "items[?path=='/orders'].id" --output text)
 if [ -z "$ORDERS_RESOURCE_ID" ] || [ "$ORDERS_RESOURCE_ID" == "None" ]; then
     ORDERS_RESOURCE_ID=$(aws apigateway create-resource --rest-api-id "$REST_API_ID" --parent-id "$API_ROOT_RESOURCE_ID" --path-part "orders" --region "$AWS_REGION" --query id --output text)
 fi
+validate_not_empty "ORDERS_RESOURCE_ID" "$ORDERS_RESOURCE_ID" "Resource /orders"
 
 # POST method
 if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method POST --region "$AWS_REGION" >/dev/null 2>&1; then
