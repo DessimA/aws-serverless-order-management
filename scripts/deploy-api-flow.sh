@@ -116,7 +116,8 @@ aws lambda update-function-configuration --function-name "$VAL_LAMBDA_NAME" --ti
 rm -f lambda_deploy_val.zip
 
 # === SQS FIFO → LambdaVal event source mapping ===
-if ! aws lambda list-event-source-mappings --function-name "$VAL_LAMBDA_NAME" --event-source-arn "$VALIDATION_BUFFER_ARN" --region "$AWS_REGION" --query "EventSourceMappings[0]" --output text >/dev/null 2>&1; then
+ESM_UUID=$(aws lambda list-event-source-mappings --function-name "$VAL_LAMBDA_NAME" --event-source-arn "$VALIDATION_BUFFER_ARN" --region "$AWS_REGION" --query "EventSourceMappings[0].UUID" --output text)
+if [ -z "$ESM_UUID" ] || [ "$ESM_UUID" == "None" ]; then
     aws lambda create-event-source-mapping --function-name "$VAL_LAMBDA_NAME" --batch-size 5 --event-source-arn "$VALIDATION_BUFFER_ARN" --region "$AWS_REGION"
 fi
 

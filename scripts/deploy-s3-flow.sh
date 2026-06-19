@@ -88,8 +88,8 @@ aws sns subscribe --topic-arn "$SNS_TOPIC_ARN" --protocol email --notification-e
 aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --timeout 60 --environment "Variables={DYNAMODB_TABLE=$AUDIT_TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN}" --region "$AWS_REGION"
 
 # === SQS → Lambda event source mapping ===
-EVENT_SOURCE_MAPPING_UUID=$(aws lambda list-event-source-mappings --function-name "$LAMBDA_NAME" --region "$AWS_REGION" --query "EventSourceMappings[0].UUID" --output text)
-if [ "$EVENT_SOURCE_MAPPING_UUID" == "None" ] || [ -z "$EVENT_SOURCE_MAPPING_UUID" ]; then
+EVENT_SOURCE_MAPPING_UUID=$(aws lambda list-event-source-mappings --function-name "$LAMBDA_NAME" --event-source-arn "$S3_EVENT_QUEUE_ARN" --region "$AWS_REGION" --query "EventSourceMappings[0].UUID" --output text)
+if [ -z "$EVENT_SOURCE_MAPPING_UUID" ] || [ "$EVENT_SOURCE_MAPPING_UUID" == "None" ]; then
     aws lambda create-event-source-mapping --function-name "$LAMBDA_NAME" --batch-size 5 --event-source-arn "$S3_EVENT_QUEUE_ARN" --region "$AWS_REGION"
 fi
 
