@@ -104,7 +104,7 @@ O fluxo inicia no **Amazon API Gateway**, que expõe um endpoint REST. A requisi
 A Lambda `order_validator` consome a fila FIFO, publica o pedido validado no **Amazon EventBridge Custom Bus** com `DetailType: OrderValidated`, e em caso de falha dispara um alerta via **SNS**. O uso do SQS FIFO como buffer garante:
 - **Desacoplamento:** A resposta ao cliente não depende da disponibilidade do EventBridge.
 - **Ordenação:** Pedidos são processados na ordem de chegada (MessageGroupId = pedidoId).
-- **Deduplicação:** O mesmo pedidoId não é processado duas vezes (ContentBasedDeduplication).
+- **Deduplicação:** A identificação única de cada mensagem SQS é garantida por um UUID gerado no momento do envio, permitindo que reenvios do mesmo pedidoId cheguem até a camada de persistência. A duplicidade de negócio é tratada pelo `ConditionExpression: attribute_not_exists(orderId)` no DynamoDB, com alerta SNS em caso de duplicata.
 
 ### 4.2. Camada de Ingestão Assíncrona (S3 — Audit-Only)
 Projetada para integração com sistemas legados ou parceiros que exportam arquivos. Quando um arquivo JSON é carregado no **Amazon S3**, uma notificação de evento é enviada para uma fila **SQS Standard**. A Lambda `file_validator` (anteriormente `batch_processor`) consome esta fila, baixa o arquivo e valida o schema (presença da chave `lista_pedidos`).
@@ -123,7 +123,7 @@ As Lambdas de processamento final são acionadas por filas SQS FIFO que atuam co
 *   **Update Processor:** Atualiza itens de pedidos existentes utilizando `UpdateExpression` e `ConditionExpression: attribute_exists(orderId)` para garantir que o pedido existe antes de alterá-lo.
 *   **Cancel Processor:** Altera o status do pedido para `CANCELLED` com `ConditionExpression: attribute_exists(orderId)`, prevenindo criação de registros fantasmas.
 
-Todas as três Lambdas tratam corretamente o campo `detail` do envelope do EventBridge como string JSON, realizando `json.loads()` adicional antes de acessar os dados.
+Todas as três Lambdas utilizam a função `parse_detail()` do módulo `common.sqs`, que trata corretamente o campo `detail` do envelope EventBridge independentemente de chegar como string ou objeto JSON nativo.
 
 ### 4.5. Camada de Consulta (Leitura de Pedidos)
 A Lambda `read_order` expõe um endpoint `GET /orders/{orderId}` no API Gateway existente. Ela consulta a tabela DynamoDB `order-production-data` via `GetItem` e retorna o item completo ou `404` se não encontrado. Respostas incluem headers CORS para integração com o frontend.
@@ -339,11 +339,12 @@ Durante o desenvolvimento e implantação em ambientes reais da AWS ou LocalStac
 **Problema:** O comando `curl` falha com `Could not resolve host` ao tentar acessar o API Gateway localmente. </br>
 **Solução:** No ambiente LocalStack, a URL deve seguir o padrão `https://{api-id}.execute-api.localhost.localstack.cloud:4566`. O script de validação foi ajustado para detectar o ambiente e montar a URL correta.
 
-## 12. Resiliência com Dead Letter Queues (DLQ)
+## 12. Resiliência com Dead Letter Queues (DLQ) e Report Batch Item Failures
 
 Todas as filas SQS deste projeto (Validação, Processamento, Alteração e Cancelamento) possuem uma DLQ associada.
-*   **Configuração:** `maxReceiveCount` definido como 3.
+*   **Configuração:** `maxReceiveCount` definido como 3, `VisibilityTimeout` parametrizado (padrão: 360s).
 *   **Funcionamento:** Se uma Lambda falhar repetidamente ao processar uma mensagem (devido a erros de código ou indisponibilidade de recursos externos), a mensagem é movida para a DLQ após a terceira tentativa. Isso evita o bloqueio da fila principal.
+*   **Report Batch Item Failures:** Todas as Lambdas acionadas por SQS implementam o padrão `batchItemFailures`, retornando apenas os `messageId` que falharam. Mensagens processadas com sucesso no mesmo lote não são reprocessadas, reduzindo o impacto de falhas parciais.
 *   **Nota:** Filas padrão (batch S3) também possuem DLQ.
 
 ## 13. Testing Dashboard (Frontend)
@@ -356,9 +357,9 @@ O dashboard é dividido em 4 abas, cada uma correspondendo a um fluxo do sistema
 
 | Aba | Ações de Sucesso | Ações de Falha |
 |-----|-----------------|----------------|
-| **Novo Pedido** | Criar Pedido → pre_validator → SQS FIFO → order_validator → EventBridge → Processor → DynamoDB | Faltando pedidoId (400), Faltando clienteId (400), JSON Inválido (400), Enviar Duplicata (ConditionalCheckFailedException → DLQ) |
+| **Novo Pedido** | Criar Pedido → pre_validator → SQS FIFO → order_validator → EventBridge → Processor → DynamoDB | Faltando pedidoId (400), Faltando clienteId (400), JSON Inválido (400), Enviar Duplicata (ConditionalCheckFailedException → alerta SNS) |
 | **Upload** | Gerar e Enviar Lote de Teste (lista_pedidos válido → DynamoDB Audit) | Schema Inválido (→ SNS Alert), Arquivo Corrompido (→ SNS Alert) |
-| **Gerenciar** | Cancelar Pedido, Atualizar Pedido (EventBridge → SQS FIFO → Lifecycle Lambda → DynamoDB) | Cancelar Inexistente, Atualizar Inexistente (ConditionalCheckFailedException → DLQ) |
+| **Gerenciar** | Cancelar Pedido, Atualizar Pedido (EventBridge → SQS FIFO → Lifecycle Lambda → DynamoDB) | Cancelar Inexistente, Atualizar Inexistente (ConditionalCheckFailedException → alerta SNS) |
 | **Consultar** | Consultar (GET /orders/{id} → DynamoDB) | Pedido Inexistente (404) |
 
 ### 13.2. Componentes do Frontend
@@ -392,8 +393,9 @@ Cada entrada mostra timestamp, nome do teste, status HTTP e payload completo da 
 |---------|------------|:---:|
 | S3: Upload Invalid Schema | `file_validator` → `ValueError` (lista_pedidos ausente) | Sim |
 | S3: Upload Corrupt File | `file_validator` → exceção de parse JSON | Sim |
-| API: Duplicate Order | `order_processor` → `ConditionalCheckFailedException` → DLQ | Não |
-| Lifecycle: Non-existent | `cancel_processor`/`update_processor` → `ConditionalCheckFailedException` → DLQ | Não |
+| API: Duplicate Order | `order_processor` → `ConditionalCheckFailedException` (log + alerta SNS, sem DLQ) | Sim |
+| Lifecycle: Non-existent | `cancel_processor`/`update_processor` → `ConditionalCheckFailedException` (log + alerta SNS, sem DLQ) | Sim |
+| API: Validation Error | `order_validator` → erro no EventBridge ou parse (alerta SNS + DLQ após 3 retries) | Sim |
 
 ---
 **Desenvolvido por [José Anderson](https://github.com/DessimA)**
