@@ -1,5 +1,17 @@
 let lastOrderId = '';
-let lastReadOrder = null;
+
+const RESULT_TYPE = {
+    pass: { border: 'border-success', bg: 'bg-success', icon: 'check_circle', statusText: 'Sucesso', cssVar: 'success' },
+    fail: { border: 'border-danger', bg: 'bg-danger', icon: 'error', statusText: 'Erro', cssVar: 'danger' },
+    warn: { border: 'border-warning', bg: 'bg-warning', icon: 'warning', statusText: 'Aviso', cssVar: 'warning' },
+};
+
+const PLACEHOLDERS = {
+    create: 'Preencha os campos e clique em <strong>Criar Pedido</strong>.',
+    consult: 'Digite um Order ID e clique em <strong>Consultar</strong>.',
+    manage: 'Digite um Order ID e clique em <strong>Cancelar</strong> ou <strong>Atualizar</strong>.',
+    batch: 'Clique em <strong>Gerar e Enviar Lote de Teste</strong>.',
+};
 
 document.addEventListener('DOMContentLoaded', () => {
     const envBadge = document.getElementById('envBadge');
@@ -14,6 +26,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    document.body.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const scenario = btn.dataset.scenario || '';
+        if (typeof window[action] === 'function') {
+            window[action](scenario);
+        }
+    });
+
+    Object.keys(PLACEHOLDERS).forEach(tab => resetInlineResult(tab, PLACEHOLDERS[tab]));
     updateLastOrderDisplay();
 });
 
@@ -34,8 +57,6 @@ function onTabSwitch(tabId) {
     }
 }
 
-// ===== Helpers =====
-
 function now() {
     return new Date().toLocaleTimeString('pt-BR', { hour12: false });
 }
@@ -45,35 +66,21 @@ function escapeHtml(text) {
     return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function safeParseJSON(str, fallback) {
-    try { return JSON.parse(str); } catch (e) { return fallback; }
+function generateId(prefix) {
+    return prefix + Date.now();
 }
 
-function slugify(text) {
-    return text
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-        .substring(0, 20);
+function readCreateForm() {
+    const clienteNome = document.getElementById('createCliente').value.trim() || 'Cliente Teste';
+    const produtoNome = document.getElementById('createProduto').value.trim() || 'Produto Teste';
+    const qtd = parseInt(document.getElementById('createQtd').value, 10) || 1;
+    const preco = parseFloat(document.getElementById('createPreco').value) || 99.90;
+    return {
+        pedidoId: generateId('ORD-'),
+        clienteId: 'CLI-' + clienteNome.replace(/\s+/g, '') + '-' + Math.floor(Math.random() * 1000),
+        clienteNome, produtoNome, qtd, preco,
+    };
 }
-
-function generateRandomOrder() {
-    const clientes = ['Maria Santos', 'Carlos Oliveira', 'Ana Costa', 'Pedro Almeida', 'Juliana Lima'];
-    const produtos = [
-        { nome: 'Curso AWS Solutions Architect', preco: 249.90 },
-        { nome: 'Curso Azure Administrator', preco: 199.90 },
-        { nome: 'Curso Google Cloud Engineer', preco: 179.90 },
-        { nome: 'Curso Kubernetes Fundamentals', preco: 299.90 },
-        { nome: 'Curso DevOps Pipeline', preco: 349.90 }
-    ];
-    const c = clientes[Math.floor(Math.random() * clientes.length)];
-    const p = produtos[Math.floor(Math.random() * produtos.length)];
-    return { cliente: c, produto: p.nome, qtd: Math.floor(Math.random() * 3) + 1, preco: p.preco };
-}
-
-// ===== Loading State =====
 
 function setLoading(btnId, loading) {
     const btn = document.getElementById(btnId);
@@ -87,23 +94,15 @@ function setLoading(btnId, loading) {
     }
 }
 
-// ===== Inline Results =====
-
 function showInlineResult(tab, type, label, data, detail) {
     const card = document.getElementById('result-' + tab);
     if (!card) return;
 
-    const borderClass = type === 'pass' ? 'border-success' : type === 'fail' ? 'border-danger' : 'border-warning';
-    const bgClass = type === 'pass' ? 'bg-success' : type === 'fail' ? 'bg-danger' : 'bg-warning';
-    const icon = type === 'pass' ? 'check_circle' : type === 'fail' ? 'error' : 'warning';
-    const statusText = type === 'pass' ? 'Sucesso' : type === 'fail' ? 'Erro' : 'Aviso';
+    const cfg = RESULT_TYPE[type] || RESULT_TYPE.warn;
+    const borderColor = `rgba(var(--bs-${cfg.cssVar}-rgb), 0.05)`;
 
-    card.className = 'card ' + borderClass;
-    card.style.background = type === 'pass'
-        ? 'rgba(var(--bs-success-rgb), 0.05)'
-        : type === 'fail'
-            ? 'rgba(var(--bs-danger-rgb), 0.05)'
-            : 'rgba(var(--bs-warning-rgb), 0.05)';
+    card.className = 'card ' + cfg.border;
+    card.style.background = borderColor;
 
     let summaryHtml = '';
     if (detail) {
@@ -119,8 +118,8 @@ function showInlineResult(tab, type, label, data, detail) {
     card.innerHTML = `
         <div class="card-body">
             <div class="d-flex align-items-center gap-2 mb-2">
-                <span class="material-icons ${bgClass} bg-opacity-10 p-1 rounded" style="font-size:1.1rem;">${icon}</span>
-                <span class="fw-semibold small">${escapeHtml(statusText)}</span>
+                <span class="material-icons ${cfg.bg} bg-opacity-10 p-1 rounded" style="font-size:1.1rem;">${cfg.icon}</span>
+                <span class="fw-semibold small">${escapeHtml(cfg.statusText)}</span>
                 <span class="text-secondary small ms-auto">${now()}</span>
             </div>
             <div class="fw-semibold small mb-2">${escapeHtml(label)}</div>
@@ -132,17 +131,13 @@ function showInlineResult(tab, type, label, data, detail) {
 
 function resetInlineResult(tab, placeholder) {
     const card = document.getElementById('result-' + tab);
-    if (!card) return;
-    card.className = 'card border-secondary bg-transparent';
-    card.innerHTML = `
-        <div class="card-body text-center text-secondary small">
+    if (card) {
+        card.innerHTML = `<div class="card-body text-center text-secondary small">
             <span class="material-icons fs-3 mb-1 d-block">info</span>
             ${placeholder}
-        </div>
-    `;
+        </div>`;
+    }
 }
-
-// ===== Log Panel =====
 
 function log(type, label, message) {
     const container = document.getElementById('logContainer');
@@ -166,13 +161,8 @@ function clearLog() {
     if (container) {
         container.innerHTML = '<p class="text-center text-secondary small py-4 mb-0 log-empty">Clique em qualquer acao para comecar.</p>';
     }
-    resetInlineResult('create', 'Preencha os campos e clique em <strong>Criar Pedido</strong>.');
-    resetInlineResult('consult', 'Digite um Order ID e clique em <strong>Consultar</strong>.');
-    resetInlineResult('manage', 'Digite um Order ID e clique em <strong>Cancelar</strong> ou <strong>Atualizar</strong>.');
-    resetInlineResult('batch', 'Clique em <strong>Gerar e Enviar Lote de Teste</strong>.');
+    Object.entries(PLACEHOLDERS).forEach(([tab, text]) => resetInlineResult(tab, text));
 }
-
-// ===== Last Order Badge =====
 
 function updateLastOrderDisplay() {
     const badge = document.getElementById('lastOrderBadge');
@@ -186,15 +176,9 @@ function updateLastOrderDisplay() {
     }
 }
 
-// ===== HTTP =====
-
-async function apiPost(url, body) {
+async function apiFetch(url, options = {}) {
     try {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
+        const res = await fetch(url, options);
         const data = await res.json().catch(() => ({ raw: 'Could not parse response' }));
         return { status: res.status, data };
     } catch (err) {
@@ -202,330 +186,188 @@ async function apiPost(url, body) {
     }
 }
 
-async function apiGet(url) {
-    try {
-        const res = await fetch(url);
-        const data = await res.json().catch(() => ({ raw: 'Could not parse response' }));
-        return { status: res.status, data };
-    } catch (err) {
-        return { status: 0, data: { error: err.message || 'Network error' } };
-    }
-}
-
-// ===== TAB 1: NOVO PEDIDO =====
-
-function buildOrderFromForm(scenario) {
+function buildOrderPayload(form, scenario) {
     if (scenario === 'auto') {
-        const r = generateRandomOrder();
-        document.getElementById('createCliente').value = r.cliente;
-        document.getElementById('createProduto').value = r.produto;
-        document.getElementById('createQtd').value = r.qtd;
-        document.getElementById('createPreco').value = r.preco;
+        const clientes = ['Maria Santos', 'Carlos Oliveira', 'Ana Costa', 'Pedro Lima', 'Juliana Souza', 'Lucas Pereira', 'Fernanda Alves', 'Rafael Martins', 'Beatriz Rocha', 'Gustavo Barbosa'];
+        const produtos = [
+            { nome: 'Curso AWS Solutions Architect', preco: 249.90 },
+            { nome: 'Curso AWS Developer', preco: 199.90 },
+            { nome: 'Curso AWS DevOps', preco: 299.90 },
+            { nome: 'Curso AWS Security', preco: 349.90 },
+            { nome: 'Curso AWS Advanced Networking', preco: 279.90 },
+            { nome: 'Curso AWS Machine Learning', preco: 399.90 },
+            { nome: 'Curso AWS Database', preco: 229.90 },
+            { nome: 'Curso AWS Serverless', preco: 179.90 },
+        ];
+        const c = clientes[Math.floor(Math.random() * clientes.length)];
+        const p = produtos[Math.floor(Math.random() * produtos.length)];
+        const q = Math.floor(Math.random() * 5) + 1;
+        return {
+            pedidoId: generateId('ORD-'),
+            clienteId: 'CLI-' + c.replace(/\s+/g, '') + '-' + Math.floor(Math.random() * 1000),
+            itens: [{ sku: p.nome.replace(/\s+/g, '-'), qtd: q, preco: p.preco }],
+        };
     }
-
-    const clienteNome = document.getElementById('createCliente').value.trim() || 'Cliente Teste';
-    const produtoNome = document.getElementById('createProduto').value.trim() || 'Produto Teste';
-    const qtd = parseInt(document.getElementById('createQtd').value, 10) || 1;
-    const preco = parseFloat(document.getElementById('createPreco').value) || 99.90;
-
-    const pedidoId = 'ORD-' + Date.now();
-    const clienteId = 'CLI-' + slugify(clienteNome) + '-' + Math.floor(Math.random() * 1000);
-
+    if (scenario === 'missing-pedido') {
+        return { clienteId: generateId('CLI-'), itens: [{ sku: 'PROD-A', qtd: 1 }] };
+    }
+    if (scenario === 'missing-cliente') {
+        return { pedidoId: generateId('ORD-'), itens: [{ sku: 'PROD-A', qtd: 1 }] };
+    }
+    if (scenario === 'invalid-json') {
+        return '__INVALID_JSON__';
+    }
+    if (scenario === 'duplicate') {
+        const id = generateId('ORD-');
+        return { pedidoId: id, clienteId: generateId('CLI-'), itens: [{ sku: 'PROD-DUP', qtd: 1 }] };
+    }
+    const { pedidoId, produtoNome, qtd, preco } = form;
     return {
-        pedidoId,
-        clienteId,
-        itens: [{ nome: produtoNome, quantidade: qtd, preco: preco }]
+        pedidoId, clienteId: form.clienteId,
+        itens: [{ sku: produtoNome.replace(/\s+/g, '-'), qtd, preco }],
     };
 }
 
 async function testAPI(scenario) {
-    scenario = scenario || 'valid';
+    const form = readCreateForm();
+    const payload = buildOrderPayload(form, scenario);
+    const isError = ['missing-pedido', 'missing-cliente', 'invalid-json', 'duplicate'].includes(scenario);
 
-    if (scenario === 'valid' || scenario === 'auto') {
-        const payload = buildOrderFromForm(scenario);
+    const label = isError ? `Novo Pedido: ${scenario}` : (scenario === 'auto' ? 'Novo Pedido: Automatico' : 'Novo Pedido');
+    const tab = 'create';
 
-        if (scenario !== 'auto') {
-            setLoading('btnCreateOrder', true);
-        }
+    setLoading('btnCreateOrder', true);
+    log('warn', label, `${isError ? 'Enviando pedido invalido...' : 'Enviando pedido...'}`);
 
-        log('warn', 'Novo Pedido: ' + (scenario === 'auto' ? 'Automatico' : 'Criar Pedido'), 'Enviando pedido...');
-
-        const res = await apiPost(API_ENDPOINT, payload);
-        setLoading('btnCreateOrder', false);
-
-        if (res.status === 200) {
-            lastOrderId = payload.pedidoId;
-            updateLastOrderDisplay();
-            const itens = payload.itens || [];
-            const itemDesc = itens.map(i => i.nome + ' (' + i.quantidade + 'x R$ ' + i.preco.toFixed(2) + ')').join(', ');
-            showInlineResult('create', 'pass', 'Pedido criado com sucesso', res.data, {
-                'Pedido': payload.pedidoId,
-                'Cliente': payload.clienteId,
-                'Itens': itemDesc
+    let res;
+    if (scenario === 'invalid-json') {
+        try {
+            const r = await fetch(API_ENDPOINT, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload,
             });
-            logResponse('pass', 'Novo Pedido: Pedido criado', res);
-        } else {
-            showInlineResult('create', 'fail', 'Falha ao criar pedido', res.data, {
-                'Status HTTP': res.status
-            });
-            logResponse('fail', 'Novo Pedido: Falha', res);
-        }
-        return;
-    }
-
-    // Error scenarios (same as before)
-    const payload = buildLegacyErrorPayload(scenario);
-    const labels = {
-        'missing-pedido': 'Faltando pedidoId',
-        'missing-cliente': 'Faltando clienteId',
-        'invalid-json': 'JSON Invalido',
-        'duplicate': 'Enviar Duplicata'
-    };
-    const label = 'Novo Pedido: ' + labels[scenario];
-
-    log('warn', label, 'Enviando payload de erro...');
-    const res = await apiPost(API_ENDPOINT, payload);
-
-    if ((scenario === 'missing-pedido' || scenario === 'missing-cliente' || scenario === 'invalid-json') && res.status === 400) {
-        showInlineResult('create', 'pass', label + ' (400 esperado)', res.data);
-        logResponse('pass', label + ' (expected 400)', res);
-    } else if (scenario === 'duplicate') {
-        if (res.status === 200) {
-            showInlineResult('create', 'warn', label + ' (aceito, falhara no processador)', res.data);
-            logResponse('pass', label + ' (accepted)', res);
-        } else {
-            showInlineResult('create', 'warn', label, res.data);
-            logResponse('warn', label, res);
+            const d = await r.json().catch(() => ({ raw: 'Could not parse response' }));
+            res = { status: r.status, data: d };
+        } catch (err) {
+            res = { status: 0, data: { error: err.message || 'Network error' } };
         }
     } else {
-        showInlineResult('create', 'fail', label, res.data);
-        logResponse('fail', label, res);
+        res = await apiFetch(API_ENDPOINT, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        });
     }
-}
 
-function buildLegacyErrorPayload(scenario) {
-    const clienteNome = document.getElementById('createCliente')?.value?.trim() || 'Cliente Teste';
-    const produtoNome = document.getElementById('createProduto')?.value?.trim() || 'Produto Teste';
-    const qtd = parseInt(document.getElementById('createQtd')?.value, 10) || 1;
-    const preco = parseFloat(document.getElementById('createPreco')?.value) || 99.90;
-    const pedidoId = 'ORD-' + Date.now();
-    const clienteId = 'CLI-' + slugify(clienteNome) + '-' + Math.floor(Math.random() * 1000);
-    const itens = [{ nome: produtoNome, quantidade: qtd, preco: preco }];
+    setLoading('btnCreateOrder', false);
 
-    switch (scenario) {
-        case 'missing-pedido':
-            return { clienteId, itens };
-        case 'missing-cliente':
-            return { pedidoId, itens };
-        case 'invalid-json':
-            return 'this is not valid json at all!!!';
-        case 'duplicate':
-            return { pedidoId: lastOrderId || (pedidoId + '-' + Date.now()), clienteId, itens };
-        default:
-            return { pedidoId, clienteId, itens };
+    if (!isError && res.status < 400 && payload.pedidoId) {
+        lastOrderId = payload.pedidoId;
+        updateLastOrderDisplay();
     }
-}
 
-// ===== TAB 2: CONSULTAR =====
+    const detail = payload.pedidoId ? { 'Pedido ID': payload.pedidoId } : undefined;
+    const type = res.status < 400 ? 'pass' : (isError ? 'warn' : 'fail');
+    showInlineResult(tab, type, label, res.data, detail);
+    logResponse(type, label, res);
+}
 
 async function testRead(scenario) {
-    if (scenario === 'last') {
-        if (!lastOrderId) {
-            showInlineResult('consult', 'warn', 'Nenhum pedido encontrado', null, {
-                'Aviso': 'Nenhum pedido foi criado nesta sessao. Crie um pedido primeiro.'
-            });
-            log('warn', 'Consultar: Ultimo Pedido', 'Nenhum pedido criado nesta sessao.');
-            return;
-        }
-        document.getElementById('readOrderId').value = lastOrderId;
-    }
-
-    const orderId = scenario === 'nonexistent'
-        ? 'ORD-NONEXISTENT-' + Date.now()
+    const orderId = scenario === 'last'
+        ? (lastOrderId || 'ORD-TEST-001')
         : (document.getElementById('readOrderId').value.trim() || lastOrderId || 'ORD-TEST-001');
+    const label = 'Consultar: ' + orderId;
 
-    const label = (scenario === 'last' || scenario === 'valid') ? 'Consultar Pedido' : 'Consultar Inexistente';
+    log('warn', label, 'Buscando pedido...');
+    const res = await apiFetch(READ_ENDPOINT.replace('{orderId}', encodeURIComponent(orderId)));
 
-    setLoading('btnReadOrder', true);
-    log('warn', 'Consultar: ' + label, 'Buscando ' + orderId + '...');
+    const type = res.status === 200 ? 'pass' : res.status === 404 ? 'warn' : 'fail';
+    const detail = res.status === 200 ? { 'Order ID': orderId } : undefined;
 
-    const url = READ_ENDPOINT.replace('{orderId}', encodeURIComponent(orderId));
-    const res = await apiGet(url);
-    setLoading('btnReadOrder', false);
+    showInlineResult('consult', type, label, res.data, detail);
+    logResponse(type, label, res);
 
-    if (res.status === 200) {
-        const order = res.data;
-        const itensList = order.itens || order.Items || [];
-        const itemDesc = itensList.map(i => (i.nome || i.Nome || '') + ' x' + (i.quantidade || i.Quantidade || 0)).join(', ');
-        const detail = {
-            'Pedido': order.orderId || orderId,
-            'Cliente': order.clienteId || order.cliente_id || '-',
-            'Status': order.status || order.Status || '-',
-            'Itens': itemDesc || itensList.length + ' item(ns)'
-        };
-        showInlineResult('consult', 'pass', label, res.data, detail);
-        logResponse('pass', 'Consultar: ' + label, res);
-        const actions = document.getElementById('consult-actions');
-        if (actions) actions.classList.remove('d-none');
-        lastReadOrder = order;
-    } else if (res.status === 404) {
-        showInlineResult('consult', 'pass', label + ' (404 esperado para pedido inexistente)', res.data);
-        logResponse('pass', 'Consultar: ' + label + ' (expected 404)', res);
-        const actions = document.getElementById('consult-actions');
-        if (actions) actions.classList.add('d-none');
-    } else {
-        showInlineResult('consult', 'fail', label, res.data);
-        logResponse('fail', 'Consultar: ' + label, res);
-        const actions = document.getElementById('consult-actions');
-        if (actions) actions.classList.add('d-none');
+    const actions = document.getElementById('consult-actions');
+    if (actions) {
+        actions.classList.toggle('d-none', res.status !== 200);
     }
 }
 
-// ===== TAB 3: GERENCIAR =====
-
 function buildManagePayload(scenario) {
-    const orderId = document.getElementById('lifecycleOrderId').value.trim() || 'ORD-NONEXISTENT-' + Date.now();
-
-    if (scenario === 'cancel') {
-        return { action: 'publish_event', detailType: 'OrderCancelled', detail: { pedidoId: orderId } };
-    }
-    if (scenario === 'cancel-nonexistent') {
-        return { action: 'publish_event', detailType: 'OrderCancelled', detail: { pedidoId: 'ORD-NONEXISTENT-' + Date.now() } };
-    }
-
-    const produto = document.getElementById('mgmtProduto').value.trim() || 'Produto';
-    const qtd = parseInt(document.getElementById('mgmtQtd').value, 10) || 1;
-    const preco = parseFloat(document.getElementById('mgmtPreco').value) || 99.90;
-
-    if (scenario === 'update') {
-        return {
-            action: 'publish_event',
-            detailType: 'OrderUpdated',
-            detail: { pedidoId: orderId, novosItens: [{ nome: produto, quantidade: qtd, preco: preco }] }
-        };
-    }
-    // update-nonexistent
-    return {
-        action: 'publish_event',
-        detailType: 'OrderUpdated',
-        detail: { pedidoId: 'ORD-NONEXISTENT-' + Date.now(), novosItens: [{ nome: produto, quantidade: qtd, preco: preco }] }
-    };
+    const orderId = document.getElementById('lifecycleOrderId').value.trim() || generateId('ORD-NONEXISTENT-');
+    const produto = document.getElementById('mgmtProduto').value.trim() || 'Curso Azure';
+    const qtd = parseInt(document.getElementById('mgmtQtd').value, 10) || 3;
+    const preco = parseFloat(document.getElementById('mgmtPreco').value) || 199.90;
+    return { orderId, novosItens: [{ sku: produto.replace(/\s+/g, '-'), qtd, preco }] };
 }
 
 async function testLifecycle(scenario) {
-    const payload = buildManagePayload(scenario);
-    const labelMap = {
-        'cancel': 'Cancelar Pedido',
-        'cancel-nonexistent': 'Cancelar Inexistente',
-        'update': 'Atualizar Pedido',
-        'update-nonexistent': 'Atualizar Inexistente'
-    };
-    const label = 'Gerenciar: ' + labelMap[scenario];
+    const isNonexistent = scenario.includes('nonexistent');
+    const action = scenario.replace('-nonexistent', '');
+    const isUpdate = action === 'update';
 
-    log('warn', label, 'Publicando ' + payload.detailType + ' no EventBridge...');
-    const res = await apiPost(TEST_ENDPOINT, payload);
+    const mgmt = buildManagePayload(scenario);
+    const detailType = isUpdate ? 'OrderUpdated' : 'OrderCancelled';
+    const label = `Gerenciar: ${isUpdate ? 'Atualizar' : 'Cancelar'} ${isNonexistent ? '(inexistente)' : ''}`;
 
-    if (res.status === 200 && (res.data.FailedEntryCount === 0 || res.data.FailedEntryCount === undefined)) {
-        const detail = {
-            'Evento': payload.detailType,
-            'Pedido': payload.detail.pedidoId
-        };
-        if (scenario.includes('nonexistent')) {
-            showInlineResult('manage', 'warn', label + ' (evento publicado, falhara no processador)', res.data, detail);
-        } else {
-            showInlineResult('manage', 'pass', label, res.data, detail);
-        }
-        logResponse('pass', label + ' (event published)', res);
-    } else if (res.status === 200) {
-        showInlineResult('manage', 'warn', label + ' (falha parcial)', res.data);
-        logResponse('warn', label + ' (partial)', res);
-    } else {
-        showInlineResult('manage', 'fail', label, res.data);
-        logResponse('fail', label, res);
-    }
-}
+    log('warn', label, 'Publicando evento no EventBridge...');
+    const res = await apiFetch(TEST_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'publish_event',
+            detailType,
+            detail: mgmt,
+        }),
+    });
 
-// ===== TAB 4: UPLOAD =====
-
-function buildBatchPayload(scenario) {
-    const ts = Date.now();
-
-    if (scenario === 'list') {
-        return { action: 'list_files', prefix: 'lote_' };
-    }
-
-    if (scenario === 'invalid-schema') {
-        return {
-            action: 'upload_file',
-            filename: 'lote_invalido_' + ts + '.json',
-            content: { chave_errada: 'lista_pedidos ausente — vai disparar alerta SNS' },
-            contentType: 'application/json'
-        };
-    }
-
-    if (scenario === 'corrupt') {
-        return {
-            action: 'upload_file',
-            filename: 'corrompido_' + ts + '.txt',
-            content: 'Isto nao e um JSON valido.',
-            contentType: 'text/plain'
-        };
-    }
-
-    // valid: generate 3 realistic orders
-    return {
-        action: 'upload_file',
-        filename: 'lote_pedidos_' + ts + '.json',
-        content: {
-            lista_pedidos: [
-                { id_pedido_arquivo: 'BAT-' + ts + '-1', id_cliente_arquivo: 'CLI-MARIA', itens_pedido_arquivo: [{ sku: 'CURSO-AWS-SAA', qtd: 2 }] },
-                { id_pedido_arquivo: 'BAT-' + ts + '-2', id_cliente_arquivo: 'CLI-CARLOS', itens_pedido_arquivo: [{ sku: 'CURSO-AZ-104', qtd: 1 }] },
-                { id_pedido_arquivo: 'BAT-' + ts + '-3', id_cliente_arquivo: 'CLI-ANA', itens_pedido_arquivo: [{ sku: 'CURSO-K8S', qtd: 3 }] }
-            ]
-        },
-        contentType: 'application/json'
-    };
+    const type = res.status < 400 ? 'pass' : 'fail';
+    showInlineResult('manage', type, label, res.data, { 'Order ID': mgmt.orderId });
+    logResponse(type, label, res);
 }
 
 async function testS3(scenario) {
-    scenario = scenario || 'valid';
-    const payload = buildBatchPayload(scenario);
+    const label = 'Upload: ' + scenario;
+    const tab = 'batch';
+    log('warn', label, 'Processando...');
 
-    const labelMap = {
-        'valid': 'Upload Lote Valido',
-        'invalid-schema': 'Schema Invalido',
-        'corrupt': 'Arquivo Corrompido',
-        'list': 'Listar Arquivos'
-    };
-    const label = 'Upload: ' + labelMap[scenario];
-
+    let res;
     if (scenario === 'list') {
-        log('warn', label, 'Buscando lista de arquivos...');
-    } else {
-        log('warn', label, 'Enviando ' + payload.filename + '...');
+        res = await apiFetch(TEST_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'list_files' }),
+        });
+    } else if (scenario === 'valid') {
+        const clientes = ['Joao Silva', 'Maria Santos', 'Carlos Oliveira'];
+        const produtos = [
+            { nome: 'Curso AWS Practitioner', qtd: 1, preco: 149.90 },
+            { nome: 'Curso AWS Solutions Architect', qtd: 2, preco: 249.90 },
+        ];
+        const pedidos = Array.from({ length: Math.floor(Math.random() * 3) + 2 }, (_, i) => ({
+            pedidoId: `LOTE-${Date.now()}-${i + 1}`,
+            clienteId: `CLI-LOTE-${i + 1}`,
+            itens: [{ sku: produtos[i % produtos.length].nome.replace(/\s+/g, '-'), qtd: produtos[i % produtos.length].qtd, preco: produtos[i % produtos.length].preco }],
+        }));
+        const content = JSON.stringify({ lista_pedidos: pedidos, total: pedidos.length });
+        res = await apiFetch(TEST_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'upload_file', filename: 'lote_' + Date.now() + '.json', content }),
+        });
+    } else if (scenario === 'invalid-schema') {
+        res = await apiFetch(TEST_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'upload_file', filename: 'invalido_' + Date.now() + '.json', content: JSON.stringify({ sem_lista: true }) }),
+        });
+    } else if (scenario === 'corrupt') {
+        res = await apiFetch(TEST_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'upload_file', filename: 'corrupto_' + Date.now() + '.txt', content: 'isto nao e json', contentType: 'text/plain' }),
+        });
     }
 
-    const res = await apiPost(TEST_ENDPOINT, payload);
-
-    if (res.status === 200) {
-        if (scenario === 'valid') {
-            const qtd = (payload.content.lista_pedidos || []).length;
-            showInlineResult('batch', 'pass', label, res.data, {
-                'Arquivo': payload.filename,
-                'Pedidos': qtd + ' pedido(s)',
-                'Status HTTP': res.status
-            });
-        } else if (scenario === 'list') {
-            const files = res.data.files || res.data.arquivos || [];
-            showInlineResult('batch', 'pass', label, res.data, {
-                'Arquivos encontrados': files.length
-            });
-        } else {
-            showInlineResult('batch', 'pass', label + ' (arquivo enviado, aguardando processamento)', res.data);
-        }
-        logResponse('pass', label, res);
-    } else {
-        showInlineResult('batch', 'fail', label, res.data);
-        logResponse('fail', label, res);
-    }
+    if (!res) return;
+    const type = res.status < 400 ? 'pass' : 'fail';
+    showInlineResult(tab, type, label, res.data, { 'Arquivo': res.data?.key || res.data?.filename || '-' });
+    logResponse(type, label, res);
 }
