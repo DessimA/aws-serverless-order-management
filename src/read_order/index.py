@@ -3,32 +3,37 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.environ['DYNAMODB_TABLE'])
+table = boto3.resource("dynamodb").Table(os.environ["DYNAMODB_TABLE"])
+
+HEADERS = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+}
+
 
 def lambda_handler(event, context):
-    headers = {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
-    }
-
-    if event.get('httpMethod') == 'OPTIONS':
-        return {'statusCode': 200, 'headers': headers, 'body': ''}
+    if event.get("httpMethod") == "OPTIONS":
+        return {"statusCode": 200, "headers": HEADERS, "body": ""}
 
     try:
-        order_id = event.get('pathParameters', {}).get('orderId')
+        order_id = event.get("pathParameters", {}).get("orderId")
         if not order_id:
-            return {'statusCode': 400, 'headers': headers, 'body': json.dumps({'error': 'Missing orderId'})}
+            return _res(400, {"error": "Missing orderId"})
 
-        result = table.get_item(Key={'orderId': str(order_id)})
-        if 'Item' not in result:
-            return {'statusCode': 404, 'headers': headers, 'body': json.dumps({'error': 'Order not found'})}
+        result = table.get_item(Key={"orderId": str(order_id)})
+        if "Item" not in result:
+            return _res(404, {"error": "Order not found"})
 
-        return {'statusCode': 200, 'headers': headers, 'body': json.dumps(result['Item'])}
+        return _res(200, result["Item"])
 
-    except ClientError as e:
-        return {'statusCode': 500, 'headers': headers, 'body': json.dumps({'error': e.response['Error']['Message']})}
+    except ClientError:
+        return _res(500, {"error": "Internal server error"})
     except Exception as e:
-        return {'statusCode': 500, 'headers': headers, 'body': json.dumps({'error': str(e)})}
+        print(f"Unexpected error: {e}")
+        return _res(500, {"error": "Internal server error"})
+
+
+def _res(status, body):
+    return {"statusCode": status, "headers": HEADERS, "body": json.dumps(body)}
