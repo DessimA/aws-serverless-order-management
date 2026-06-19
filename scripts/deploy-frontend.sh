@@ -237,9 +237,9 @@ echo "API Gateway deployment updated."
 # BUILD AND UPLOAD FRONTEND
 # ================================================================
 
-API_ENDPOINT="https://${REST_API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod/orders"
-TEST_ENDPOINT="https://${REST_API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod/test"
-READ_ENDPOINT="https://${REST_API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod/orders/{orderId}"
+API_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders")
+TEST_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/test")
+READ_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders/{orderId}")
 
 BUILD_DIR=$(mktemp -d)
 cp "$SCRIPT_DIR/../frontend/index.html" "$BUILD_DIR/"
@@ -262,7 +262,7 @@ rm -rf "$BUILD_DIR"
 
 
 
-FRONTEND_URL="http://${FRONTEND_BUCKET}.s3-website.${AWS_REGION}.amazonaws.com"
+FRONTEND_URL=$(get_endpoint_url "s3-website" "$FRONTEND_BUCKET")
 
 echo ""
 echo "============================================="
