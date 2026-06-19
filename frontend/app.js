@@ -218,8 +218,8 @@ function buildOrderPayload(form, scenario) {
         return '__INVALID_JSON__';
     }
     if (scenario === 'duplicate') {
-        const id = generateId('ORD-');
-        return { pedidoId: id, clienteId: generateId('CLI-'), itens: [{ sku: 'PROD-DUP', qtd: 1 }] };
+        const id = lastOrderId || 'ORD-TEST-DUP';
+        return { pedidoId: id, clienteId: 'CLI-DUP-001', itens: [{ sku: 'PROD-DUP', qtd: 1 }] };
     }
     const { pedidoId, produtoNome, qtd, preco } = form;
     return {
