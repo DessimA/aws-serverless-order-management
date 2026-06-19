@@ -85,7 +85,7 @@ graph LR
 *   **Infraestrutura como Código (IaC):** Automação via Shell Scripting e AWS CLI.
 *   **Serviços AWS:**
     *   **Amazon API Gateway:** Ponto de entrada REST para integração síncrona.
-    *   **AWS Lambda:** Execução de lógica de negócio serverless (6 funções).
+    *   **AWS Lambda:** Execução de lógica de negócio serverless (8 funções).
     *   **Amazon S3:** Armazenamento de objetos para processamento em lote.
     *   **Amazon SQS:** Filas FIFO para buffers de validação e processamento; filas Standard para notificações S3.
     *   **Amazon EventBridge:** Orquestrador de eventos para desacoplamento total.
