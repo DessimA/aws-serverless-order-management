@@ -262,6 +262,114 @@ validate_esm() {
     echo "  OK: Event source mapping $uuid (State=$state)"
 }
 
+ensure_iam_lambda_role() {
+    local role_name="$1"
+    if ! aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
+        aws iam create-role --role-name "$role_name" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+        aws iam attach-role-policy --role-name "$role_name" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    fi
+    wait_for_iam_role "$role_name"
+}
+
+ensure_sqs_dlq() {
+    local dlq_name="$1"
+    local region="$2"
+    local fifo="$3"
+    if ! aws sqs get-queue-url --queue-name "$dlq_name" --region "$region" >/dev/null 2>&1; then
+        local attrs="{}"
+        [ "$fifo" == "true" ] && attrs='{"FifoQueue":"true"}'
+        aws sqs create-queue --queue-name "$dlq_name" --attributes "$attrs" --region "$region"
+    fi
+    local url
+    url=$(aws sqs get-queue-url --queue-name "$dlq_name" --region "$region" --query QueueUrl --output text)
+    local arn
+    arn=$(aws sqs get-queue-attributes --queue-url "$url" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$region")
+    echo "$arn"
+}
+
+ensure_sqs_queue() {
+    local queue_name="$1"
+    local dlq_arn="$2"
+    local region="$3"
+    local fifo="$4"
+    local is_fifo="$5"
+    if [ "$fifo" == "true" ]; then
+        if ! aws sqs get-queue-url --queue-name "$queue_name" --region "$region" >/dev/null 2>&1; then
+            aws sqs create-queue --queue-name "$queue_name" --attributes "{\"FifoQueue\":\"true\",\"ContentBasedDeduplication\":\"true\",\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$dlq_arn\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$region"
+        fi
+    else
+        if ! aws sqs get-queue-url --queue-name "$queue_name" --region "$region" >/dev/null 2>&1; then
+            aws sqs create-queue --queue-name "$queue_name" --attributes "{\"VisibilityTimeout\":\"90\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$dlq_arn\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" --region "$region"
+        fi
+    fi
+    local url
+    url=$(aws sqs get-queue-url --queue-name "$queue_name" --region "$region" --query QueueUrl --output text)
+    local arn
+    arn=$(aws sqs get-queue-attributes --queue-url "$url" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$region")
+    aws sqs set-queue-attributes --queue-url "$url" --attributes "{\"VisibilityTimeout\":\"90\"}" --region "$region"
+    wait_for_sqs_queue "$queue_name" "$region"
+    validate_not_empty "QUEUE_URL" "$url" "$queue_name Queue URL"
+    validate_not_empty "QUEUE_ARN" "$arn" "$queue_name Queue ARN"
+    validate_sqs_queue "$url" "$region" "$is_fifo"
+    QUEUE_URL="$url"
+    QUEUE_ARN="$arn"
+}
+
+ensure_lambda_function() {
+    local lambda_name="$1"
+    local role_name="$2"
+    local handler="$3"
+    local zip_file="$4"
+    local region="$5"
+    local account_id="$6"
+    shift 6
+    local env_vars="$*"
+    if ! aws lambda get-function --function-name "$lambda_name" --region "$region" >/dev/null 2>&1; then
+        echo "Criando funcao Lambda $lambda_name..."
+        for i in {1..3}; do
+            aws lambda create-function --function-name "$lambda_name" --runtime python3.12 --role "arn:aws:iam::$account_id:role/$role_name" --handler "$handler" --zip-file "fileb://$zip_file" --timeout 60 --region "$region" && break || sleep 10
+        done
+        aws lambda wait function-active-v2 --function-name "$lambda_name" --region "$region"
+    else
+        aws lambda update-function-code --function-name "$lambda_name" --zip-file "fileb://$zip_file" --region "$region"
+        aws lambda wait function-updated-v2 --function-name "$lambda_name" --region "$region"
+    fi
+    if [ -n "$env_vars" ]; then
+        aws lambda update-function-configuration --function-name "$lambda_name" --timeout 60 --environment "Variables={$env_vars}" --region "$region"
+    fi
+}
+
+ensure_event_source_mapping() {
+    local function_name="$1"
+    local source_arn="$2"
+    local region="$3"
+    local batch_size="${4:-5}"
+    local uuid
+    uuid=$(aws lambda list-event-source-mappings --function-name "$function_name" --event-source-arn "$source_arn" --region "$region" --query "EventSourceMappings[0].UUID" --output text)
+    if [ -z "$uuid" ] || [ "$uuid" == "None" ]; then
+        aws lambda create-event-source-mapping --function-name "$function_name" --batch-size "$batch_size" --event-source-arn "$source_arn" --region "$region"
+    fi
+    validate_esm "$function_name" "$source_arn" "$region"
+}
+
+setup_api_cors() {
+    local rest_api_id="$1"
+    local resource_id="$2"
+    local region="$3"
+    if ! aws apigateway get-method --rest-api-id "$rest_api_id" --resource-id "$resource_id" --http-method OPTIONS --region "$region" >/dev/null 2>&1; then
+        aws apigateway put-method --rest-api-id "$rest_api_id" --resource-id "$resource_id" --http-method OPTIONS --authorization-type "NONE" --region "$region"
+    fi
+    aws apigateway get-method-response --rest-api-id "$rest_api_id" --resource-id "$resource_id" --http-method OPTIONS --status-code 200 --region "$region" >/dev/null 2>&1 || \
+    aws apigateway put-method-response --rest-api-id "$rest_api_id" --resource-id "$resource_id" --http-method OPTIONS --status-code 200 \
+        --response-parameters "method.response.header.Access-Control-Allow-Headers=true,method.response.header.Access-Control-Allow-Methods=true,method.response.header.Access-Control-Allow-Origin=true" \
+        --region "$region"
+    aws apigateway get-integration --rest-api-id "$rest_api_id" --resource-id "$resource_id" --http-method OPTIONS --region "$region" >/dev/null 2>&1 || \
+    aws apigateway put-integration --rest-api-id "$rest_api_id" --resource-id "$resource_id" --http-method OPTIONS --type MOCK \
+        --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$region"
+    aws apigateway get-integration-response --rest-api-id "$rest_api_id" --resource-id "$resource_id" --http-method OPTIONS --status-code 200 --region "$region" >/dev/null 2>&1 || \
+    put_integration_response_cors "$rest_api_id" "$resource_id" "$region"
+}
+
 put_eventbridge_target() {
     local rule_name="$1"
     local event_bus_name="$2"
