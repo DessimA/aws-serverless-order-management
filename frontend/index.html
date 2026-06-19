@@ -79,11 +79,11 @@
                     </div>
 
                     <div class="d-flex flex-wrap gap-2 mb-2">
-                        <button class="btn btn-primary btn-lg" onclick="testAPI()" id="btnCreateOrder">
+                        <button class="btn btn-primary btn-lg" data-action="testAPI" id="btnCreateOrder">
                             <span class="material-icons me-1 align-text-bottom">add_shopping_cart</span>
                             Criar Pedido
                         </button>
-                        <button class="btn btn-outline-secondary" onclick="testAPI('auto')">
+                        <button class="btn btn-outline-secondary" data-action="testAPI" data-scenario="auto">
                             <span class="material-icons me-1 align-text-bottom">auto_fix_high</span>
                             Automatico
                         </button>
@@ -97,20 +97,15 @@
                         <div class="card card-body border-secondary bg-body-tertiary py-2">
                             <p class="small text-secondary mb-2">Teste como o sistema reage a dados invalidos.</p>
                             <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-outline-danger btn-sm" onclick="testAPI('missing-pedido')">Faltando pedidoId</button>
-                                <button class="btn btn-outline-danger btn-sm" onclick="testAPI('missing-cliente')">Faltando clienteId</button>
-                                <button class="btn btn-outline-danger btn-sm" onclick="testAPI('invalid-json')">JSON Invalido</button>
-                                <button class="btn btn-outline-warning btn-sm" onclick="testAPI('duplicate')">Enviar Duplicata</button>
+                                <button class="btn btn-outline-danger btn-sm" data-action="testAPI" data-scenario="missing-pedido">Faltando pedidoId</button>
+                                <button class="btn btn-outline-danger btn-sm" data-action="testAPI" data-scenario="missing-cliente">Faltando clienteId</button>
+                                <button class="btn btn-outline-danger btn-sm" data-action="testAPI" data-scenario="invalid-json">JSON Invalido</button>
+                                <button class="btn btn-outline-warning btn-sm" data-action="testAPI" data-scenario="duplicate">Enviar Duplicata</button>
                             </div>
                         </div>
                     </div>
 
-                    <div class="card border-secondary bg-transparent" id="result-create">
-                        <div class="card-body text-center text-secondary small">
-                            <span class="material-icons fs-3 mb-1 d-block">info</span>
-                            Preencha os campos e clique em <strong>Criar Pedido</strong>.
-                        </div>
-                    </div>
+                    <div class="card border-secondary bg-transparent" id="result-create"></div>
                 </div>
 
                 <!-- ===== TAB 2: CONSULTAR ===== -->
@@ -122,26 +117,21 @@
                         <label for="readOrderId" class="form-label small">Order ID</label>
                         <div class="input-group">
                             <input type="text" class="form-control" id="readOrderId" placeholder="Ex: ORD-TEST-001">
-                            <button class="btn btn-primary" onclick="testRead('valid')" id="btnReadOrder">
+                            <button class="btn btn-primary" data-action="testRead" id="btnReadOrder">
                                 <span class="material-icons me-1 align-text-bottom">search</span>
                                 Consultar
                             </button>
-                            <button class="btn btn-outline-secondary" onclick="testRead('last')">
+                            <button class="btn btn-outline-secondary" data-action="testRead" data-scenario="last">
                                 <span class="material-icons me-1 align-text-bottom">history</span>
                                 Ultimo Pedido
                             </button>
                         </div>
                     </div>
 
-                    <div class="card border-secondary bg-transparent" id="result-consult">
-                        <div class="card-body text-center text-secondary small">
-                            <span class="material-icons fs-3 mb-1 d-block">info</span>
-                            Digite um Order ID e clique em <strong>Consultar</strong>.
-                        </div>
-                    </div>
+                    <div class="card border-secondary bg-transparent" id="result-consult"></div>
 
                     <div class="d-none mt-3" id="consult-actions">
-                        <button class="btn btn-outline-primary btn-sm" onclick="switchTab('manage')">
+                        <button class="btn btn-outline-primary btn-sm" data-action="switchTab" data-scenario="manage">
                             <span class="material-icons fs-6 align-text-bottom me-1">arrow_forward</span>
                             Gerenciar este Pedido
                         </button>
@@ -174,11 +164,11 @@
                     </div>
 
                     <div class="d-flex flex-wrap gap-2 mb-2">
-                        <button class="btn btn-outline-danger" onclick="testLifecycle('cancel')">
+                        <button class="btn btn-outline-danger" data-action="testLifecycle" data-scenario="cancel">
                             <span class="material-icons me-1 align-text-bottom">cancel</span>
                             Cancelar Pedido
                         </button>
-                        <button class="btn btn-outline-primary" onclick="testLifecycle('update')">
+                        <button class="btn btn-outline-primary" data-action="testLifecycle" data-scenario="update">
                             <span class="material-icons me-1 align-text-bottom">refresh</span>
                             Atualizar Pedido
                         </button>
@@ -192,18 +182,13 @@
                         <div class="card card-body border-secondary bg-body-tertiary py-2">
                             <p class="small text-secondary mb-2">Teste o comportamento com pedidos que nao existem.</p>
                             <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-outline-danger btn-sm" onclick="testLifecycle('cancel-nonexistent')">Cancelar Inexistente</button>
-                                <button class="btn btn-outline-danger btn-sm" onclick="testLifecycle('update-nonexistent')">Atualizar Inexistente</button>
+                                <button class="btn btn-outline-danger btn-sm" data-action="testLifecycle" data-scenario="cancel-nonexistent">Cancelar Inexistente</button>
+                                <button class="btn btn-outline-danger btn-sm" data-action="testLifecycle" data-scenario="update-nonexistent">Atualizar Inexistente</button>
                             </div>
                         </div>
                     </div>
 
-                    <div class="card border-secondary bg-transparent" id="result-manage">
-                        <div class="card-body text-center text-secondary small">
-                            <span class="material-icons fs-3 mb-1 d-block">info</span>
-                            Digite um Order ID e clique em <strong>Cancelar</strong> ou <strong>Atualizar</strong>.
-                        </div>
-                    </div>
+                    <div class="card border-secondary bg-transparent" id="result-manage"></div>
                 </div>
 
                 <!-- ===== TAB 4: UPLOAD ===== -->
@@ -212,11 +197,11 @@
                     <p class="text-secondary small mb-3">Gere e envie um arquivo JSON com pedidos em lote para processamento via S3.</p>
 
                     <div class="d-flex flex-wrap gap-2 mb-2">
-                        <button class="btn btn-primary btn-lg" onclick="testS3('valid')">
+                        <button class="btn btn-primary btn-lg" data-action="testS3" data-scenario="valid">
                             <span class="material-icons me-1 align-text-bottom">cloud_upload</span>
                             Gerar e Enviar Lote de Teste
                         </button>
-                        <button class="btn btn-outline-secondary" onclick="testS3('list')">
+                        <button class="btn btn-outline-secondary" data-action="testS3" data-scenario="list">
                             <span class="material-icons me-1 align-text-bottom">folder_open</span>
                             Listar Arquivos
                         </button>
@@ -230,18 +215,13 @@
                         <div class="card card-body border-secondary bg-body-tertiary py-2">
                             <p class="small text-secondary mb-2">Teste o tratamento de arquivos invalidos.</p>
                             <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-outline-danger btn-sm" onclick="testS3('invalid-schema')">Schema Invalido</button>
-                                <button class="btn btn-outline-danger btn-sm" onclick="testS3('corrupt')">Arquivo Corrompido</button>
+                                <button class="btn btn-outline-danger btn-sm" data-action="testS3" data-scenario="invalid-schema">Schema Invalido</button>
+                                <button class="btn btn-outline-danger btn-sm" data-action="testS3" data-scenario="corrupt">Arquivo Corrompido</button>
                             </div>
                         </div>
                     </div>
 
-                    <div class="card border-secondary bg-transparent" id="result-batch">
-                        <div class="card-body text-center text-secondary small">
-                            <span class="material-icons fs-3 mb-1 d-block">info</span>
-                            Clique em <strong>Gerar e Enviar Lote de Teste</strong>.
-                        </div>
-                    </div>
+                    <div class="card border-secondary bg-transparent" id="result-batch"></div>
                 </div>
 
             </div>
@@ -254,7 +234,7 @@
                     <span class="material-icons fs-6 me-1 align-text-bottom">list_alt</span>
                     Log
                 </h2>
-                <button class="btn btn-sm btn-outline-secondary" onclick="clearLog()">Limpar</button>
+                <button class="btn btn-sm btn-outline-secondary" data-action="clearLog">Limpar</button>
             </div>
             <div class="overflow-y-auto p-2" id="logContainer" style="max-height: calc(100vh - 110px);">
                 <p class="text-center text-secondary small py-4 mb-0 log-empty">Clique em qualquer acao para comecar.</p>
