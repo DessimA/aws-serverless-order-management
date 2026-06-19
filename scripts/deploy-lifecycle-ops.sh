@@ -34,8 +34,6 @@ deploy_lifecycle_handler() {
     validate_not_empty "DLQ_ARN" "$DLQ_ARN" "Lifecycle $OPERATION DLQ ARN"
 
     ensure_sqs_queue "$QUEUE_NAME" "$DLQ_ARN" "$AWS_REGION" "true" "true"
-    local QUEUE_URL="$QUEUE_URL"
-    local QUEUE_ARN="$QUEUE_ARN"
 
     # ========== IAM ==========
     ensure_iam_lambda_role "$ROLE_NAME"
@@ -51,10 +49,14 @@ deploy_lifecycle_handler() {
     validate_sqs_policy "$QUEUE_URL" "$AWS_REGION" "$QUEUE_ARN" "events.amazonaws.com" "sqs:SendMessage" "$LIFECYCLE_RULE_ARN"
 
     # ========== Lambda Deployment ==========
-    local SRC_DIR="../src/lifecycle_ops"
-    cd "$SRC_DIR"
-    zip -q "../../scripts/lambda_deploy_${OPERATION}.zip" "index.py"
+    PKG_DIR=$(mktemp -d)
+    cp "../src/lifecycle_ops/index.py" "$PKG_DIR/"
+    mkdir -p "$PKG_DIR/common"
+    cp ../src/common/*.py "$PKG_DIR/common/"
+    cd "$PKG_DIR"
+    zip -qr "$SCRIPT_DIR/lambda_deploy_${OPERATION}.zip" .
     cd "$SCRIPT_DIR"
+    rm -rf "$PKG_DIR"
 
     ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.${OPERATION}_handler" "lambda_deploy_${OPERATION}.zip" "$AWS_REGION" "$ACCOUNT_ID" "DYNAMODB_TABLE=$TABLE_NAME"
     validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"

@@ -50,9 +50,14 @@ aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"Policy\":
 validate_sqs_policy "$QUEUE_URL" "$AWS_REGION" "$QUEUE_ARN" "events.amazonaws.com" "sqs:SendMessage" "$RULE_ARN"
 
 # === Lambda Deployment ===
-cd ../src/order_processor
-zip -q ../../scripts/lambda_deploy.zip index.py
-cd ../../scripts
+PKG_DIR=$(mktemp -d)
+cp ../src/order_processor/index.py "$PKG_DIR/"
+mkdir -p "$PKG_DIR/common"
+cp ../src/common/*.py "$PKG_DIR/common/"
+cd "$PKG_DIR"
+zip -qr "$SCRIPT_DIR/lambda_deploy.zip" .
+cd "$SCRIPT_DIR"
+rm -rf "$PKG_DIR"
 
 ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.lambda_handler" "lambda_deploy.zip" "$AWS_REGION" "$ACCOUNT_ID" "DYNAMODB_TABLE=$TABLE_NAME"
 validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"
