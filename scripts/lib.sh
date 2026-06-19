@@ -13,6 +13,10 @@ validate_resource_suffix() {
         echo "ERRO: RESOURCE_SUFFIX nao pode ser vazio."
         exit 1
     fi
+    if [ ${#suffix} -gt 20 ]; then
+        echo "ERRO: RESOURCE_SUFFIX '$suffix' tem ${#suffix} caracteres (maximo 20)."
+        exit 1
+    fi
     echo "  OK: RESOURCE_SUFFIX '$suffix' possui formato valido."
 }
 
@@ -56,6 +60,48 @@ load_env() {
     set -a
     source "$env_file"
     set +a
+    if [ "${DEPLOY_TARGET:-aws}" == "localstack" ]; then
+        export AWS_ENDPOINT_URL="http://localhost:4566"
+    fi
+}
+
+get_endpoint_url() {
+    local service="$1"
+    local identifier="$2"
+    local path="${3:-}"
+    if [ "${DEPLOY_TARGET:-aws}" == "localstack" ]; then
+        case "$service" in
+            api) echo "https://${identifier}.execute-api.localhost.localstack.cloud:4566${path}" ;;
+            s3-website) echo "http://${identifier}.s3-website.localhost.localstack.cloud:4566" ;;
+            *) echo "Unknown service: $service" >&2; exit 1 ;;
+        esac
+    else
+        case "$service" in
+            api) echo "https://${identifier}.execute-api.${AWS_REGION}.amazonaws.com${path}" ;;
+            s3-website) echo "http://${identifier}.s3-website.${AWS_REGION}.amazonaws.com" ;;
+            *) echo "Unknown service: $service" >&2; exit 1 ;;
+        esac
+    fi
+}
+
+poll_resource() {
+    local description="$1"
+    local max_attempts="$2"
+    local interval="$3"
+    shift 3
+    echo "Aguardando $description..."
+    local i=1
+    while [ "$i" -le "$max_attempts" ]; do
+        if eval "$*"; then
+            echo "OK: $description pronto."
+            return 0
+        fi
+        echo "  Tentativa $i/$max_attempts: ainda nao pronto, aguardando ${interval}s..."
+        sleep "$interval"
+        i=$((i + 1))
+    done
+    echo "ERRO: $description nao ficou pronto apos $((max_attempts * interval)) segundos"
+    return 1
 }
 
 validate_env() {
