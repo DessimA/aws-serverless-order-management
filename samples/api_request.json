@@ -3,8 +3,9 @@
   "clienteId": "CLIENT-99",
   "itens": [
     {
-      "produto": "Cloud Practitioner Exam Voucher",
-      "quantidade": 1
+      "sku": "AWS-EXAM-VOUCHER",
+      "qtd": 1,
+      "preco": 149.90
     }
   ]
 }

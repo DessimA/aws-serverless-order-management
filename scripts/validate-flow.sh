@@ -18,13 +18,14 @@ bash "$SCRIPT_DIR/deploy-api-flow.sh"
 bash "$SCRIPT_DIR/deploy-s3-flow.sh"
 bash "$SCRIPT_DIR/deploy-order-processor.sh"
 bash "$SCRIPT_DIR/deploy-lifecycle-ops.sh"
+bash "$SCRIPT_DIR/deploy-frontend.sh"
 
 echo ""
 echo "============================================="
 echo " INICIANDO VALIDACAO DO FLUXO COMPLETO"
 echo "============================================="
 
-# === 1. API → LambdaPre → SQS FIFO → LambdaVal → EventBridge → SQS → LambdaPend → DynamoDB ===
+# === 1. API Gateway flow ===
 echo ""
 echo "--- Test 1: POST /orders via API Gateway ---"
 
@@ -35,11 +36,12 @@ if [ -z "$REST_API_ID" ] || [ "$REST_API_ID" == "None" ]; then
     exit 1
 fi
 ENDPOINT="https://${REST_API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod/orders"
+FRONTEND_URL="http://order-frontend-${RESOURCE_SUFFIX}.s3-website.${AWS_REGION}.amazonaws.com"
 
 ORDER_ID="ORD-$(date +%s)-$$"
 RESPONSE=$(curl -s -X POST "$ENDPOINT" \
   -H "Content-Type: application/json" \
-  -d "{\"pedidoId\":\"$ORDER_ID\",\"clienteId\":\"CLI-TEST1\",\"itens\":[{\"nome\":\"Item Teste\",\"quantidade\":2,\"preco\":25.0}]}" 2>&1 || echo "CURL_FAILED:$?")
+  -d "{\"pedidoId\":\"$ORDER_ID\",\"clienteId\":\"CLI-TEST1\",\"itens\":[{\"sku\":\"ITEM-TESTE\",\"qtd\":2,\"preco\":25.0}]}" 2>&1 || echo "CURL_FAILED:$?")
 
 if echo "$RESPONSE" | grep -q "Order accepted"; then
     echo "PASS: API returned success for order $ORDER_ID"
@@ -60,12 +62,12 @@ else
     echo "  DynamoDB response: $DDB_RESULT"
 fi
 
-# === 2. S3 → SQS → LambdaFileVal → DynamoDB Audit (NO EventBridge) ===
+# === 2. S3 flow ===
 echo ""
 echo "--- Test 2: S3 File Upload (Validation + Audit only) ---"
 
 S3_BUCKET="order-files-bucket-${RESOURCE_SUFFIX}"
-S3_FILE_BODY='{"lista_pedidos":[{"id_pedido_arquivo":"BAT-100","id_cliente_arquivo":"CLI-BATCH","itens_pedido_arquivo":[{"nome":"Item Lote","quantidade":1,"preco":99.9}]}]}'
+S3_FILE_BODY='{"lista_pedidos":[{"id_pedido_arquivo":"BAT-100","id_cliente_arquivo":"CLI-BATCH","itens_pedido_arquivo":[{"sku":"ITEM-LOTE","qtd":1,"preco":99.9}]}]}'
 S3_KEY="pedidos_$(date +%s).json"
 
 echo "Uploading test file to s3://${S3_BUCKET}/${S3_KEY}"
@@ -96,7 +98,7 @@ else
     echo "PASS: Batch order BAT-100 correctly NOT in production table (audit-only flow)"
 fi
 
-# === 3. EventBridge Lifecycle Ops (Cancel) ===
+# === 3. Lifecycle Cancel ===
 echo ""
 echo "--- Test 3: Cancel Operation via EventBridge ---"
 CANCEL_DETAIL="{\"pedidoId\":\"$ORDER_ID\"}"
@@ -114,10 +116,10 @@ else
     echo "  DynamoDB result: $CANCEL_RESULT"
 fi
 
-# === 4. EventBridge Lifecycle Ops (Update) ===
+# === 4. Lifecycle Update ===
 echo ""
 echo "--- Test 4: Update Operation via EventBridge ---"
-UPDATE_DETAIL="{\"pedidoId\":\"$ORDER_ID\",\"novosItens\":[{\"nome\":\"Item Atualizado\",\"quantidade\":5,\"preco\":150.0}]}"
+UPDATE_DETAIL="{\"pedidoId\":\"$ORDER_ID\",\"novosItens\":[{\"sku\":\"ITEM-ATUALIZADO\",\"qtd\":5,\"preco\":150.0}]}"
 UPDATE_DETAIL_ESCAPED=$(echo "$UPDATE_DETAIL" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))' | sed 's/^"//;s/"$//')
 aws events put-events --region "$AWS_REGION" --entries "[{\"Source\":\"app.orders.operations\",\"DetailType\":\"OrderUpdated\",\"Detail\":\"$UPDATE_DETAIL_ESCAPED\",\"EventBusName\":\"$EVENT_BUS_NAME\"}]" >/dev/null 2>&1 && echo "PASS: Update event published" || echo "WARN: Could not publish update event"
 
@@ -130,6 +132,73 @@ if echo "$UPDATE_RESULT" | grep -q "UPDATED"; then
 else
     echo "FAIL: Order $ORDER_ID was NOT updated"
     echo "  DynamoDB result: $UPDATE_RESULT"
+fi
+
+# === 5. Read Order via API Gateway ===
+echo ""
+echo "--- Test 5: GET /orders/{orderId} via read_order Lambda ---"
+READ_ENDPOINT="https://${REST_API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod/orders/${ORDER_ID}"
+READ_RESPONSE=$(curl -s "$READ_ENDPOINT" 2>&1 || echo "CURL_FAILED:$?")
+if echo "$READ_RESPONSE" | grep -q "PROCESSED"; then
+    echo "PASS: GET /orders/$ORDER_ID returned order with status PROCESSED"
+elif echo "$READ_RESPONSE" | grep -q "orderId"; then
+    echo "WARN: GET /orders/$ORDER_ID returned data but without PROCESSED status"
+    echo "  Response: $READ_RESPONSE"
+else
+    echo "FAIL: GET /orders/$ORDER_ID failed"
+    echo "  Response: $READ_RESPONSE"
+fi
+
+# === 6. Test Controller: publish_event ===
+echo ""
+echo "--- Test 6: test_controller publish_event ---"
+TEST_ENDPOINT="https://${REST_API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod/test"
+CTRL_EVENT_RESPONSE=$(curl -s -X POST "$TEST_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"action\":\"publish_event\",\"detailType\":\"OrderCancelled\",\"detail\":{\"pedidoId\":\"CTRL-TEST-$(date +%s)\"}}" 2>&1 || echo "CURL_FAILED:$?")
+if echo "$CTRL_EVENT_RESPONSE" | grep -q "Event published"; then
+    echo "PASS: test_controller publish_event succeeded"
+else
+    echo "FAIL: test_controller publish_event failed"
+    echo "  Response: $CTRL_EVENT_RESPONSE"
+fi
+
+# === 7. Test Controller: upload_file ===
+echo ""
+echo "--- Test 7: test_controller upload_file ---"
+CTRL_UPLOAD_RESPONSE=$(curl -s -X POST "$TEST_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"action\":\"upload_file\",\"filename\":\"validate-test-$(date +%s).json\",\"content\":{\"test\":true}}" 2>&1 || echo "CURL_FAILED:$?")
+if echo "$CTRL_UPLOAD_RESPONSE" | grep -q "File uploaded"; then
+    echo "PASS: test_controller upload_file succeeded"
+else
+    echo "FAIL: test_controller upload_file failed"
+    echo "  Response: $CTRL_UPLOAD_RESPONSE"
+fi
+
+# === 8. Test Controller: list_files ===
+echo ""
+echo "--- Test 8: test_controller list_files ---"
+CTRL_LIST_RESPONSE=$(curl -s -X POST "$TEST_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"action\":\"list_files\",\"prefix\":\"validate-test\"}" 2>&1 || echo "CURL_FAILED:$?")
+if echo "$CTRL_LIST_RESPONSE" | grep -q "files"; then
+    echo "PASS: test_controller list_files succeeded"
+else
+    echo "FAIL: test_controller list_files failed"
+    echo "  Response: $CTRL_LIST_RESPONSE"
+fi
+
+# === 9. Frontend URL check ===
+echo ""
+echo "--- Test 9: Frontend S3 bucket accessibility ---"
+FRONTEND_CHECK=$(curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" 2>&1 || echo "CURL_FAILED")
+if [ "$FRONTEND_CHECK" = "200" ]; then
+    echo "PASS: Frontend URL $FRONTEND_URL returned HTTP 200"
+elif [ "$FRONTEND_CHECK" = "403" ]; then
+    echo "WARN: Frontend returned 403 (may need bucket policy check)"
+else
+    echo "WARN: Frontend HTTP status: $FRONTEND_CHECK"
 fi
 
 # === Summary ===
@@ -145,3 +214,4 @@ echo "  - $S3_KEY (check DynamoDB table '$AUDIT_TABLE')"
 echo ""
 echo "Production table: $PRODUCTION_TABLE"
 echo "S3 bucket: order-files-bucket-$RESOURCE_SUFFIX"
+echo "Frontend URL: $FRONTEND_URL"
