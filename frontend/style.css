@@ -1,5 +1,9 @@
 /* ===== Custom overrides for Bootstrap dark theme ===== */
 
+:root {
+    --font-mono: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 /* ── Last Order Badge ── */
 #lastOrderBadge.badge {
     font-weight: 400;
@@ -7,7 +11,7 @@
 }
 
 #lastOrderBadge strong {
-    font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono);
 }
 
 /* ── Result Summary Grid ── */
@@ -35,7 +39,7 @@
 .result-summary .field .field-value {
     font-size: 0.85rem;
     font-weight: 600;
-    font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono);
 }
 
 /* ── Result Body (JSON dump) ── */
@@ -44,7 +48,7 @@
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius-sm);
     padding: 0.75rem;
-    font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -61,7 +65,7 @@
     border-radius: var(--bs-border-radius-sm);
     border: 1px solid var(--bs-border-color);
     font-size: 0.75rem;
-    font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono);
     line-height: 1.5;
     transition: background 0.15s;
 }
@@ -109,15 +113,6 @@
     white-space: pre-wrap;
 }
 
-/* ── Next Step Button ── */
-.next-step {
-    --bs-btn-color: var(--bs-info);
-    --bs-btn-border-color: var(--bs-info);
-    --bs-btn-hover-bg: rgba(var(--bs-info-rgb), 0.1);
-    --bs-btn-hover-border-color: var(--bs-info);
-    --bs-btn-hover-color: var(--bs-info);
-}
-
 /* ── Loading Button ── */
 .btn-loading {
     position: relative;
@@ -141,23 +136,6 @@
 
 @keyframes spin {
     to { transform: rotate(360deg); }
-}
-
-/* ── Separator for "or" between buttons ── */
-.form-or {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    color: var(--bs-secondary-color);
-    font-size: 0.8rem;
-    margin: 0.25rem 0;
-}
-
-.form-or::before,
-.form-or::after {
-    content: '';
-    flex: 1;
-    border-bottom: 1px solid var(--bs-border-color);
 }
 
 /* ── Scrollbar ── */
