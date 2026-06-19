@@ -146,7 +146,7 @@ aws-serverless-order-ingestion/
 │   │   └── feature_request.md  # Template de solicitacao de funcionalidade
 │   └── PULL_REQUEST_TEMPLATE.md # Template de Pull Request
 ├── scripts/                    # Infraestrutura como Codigo (IaC) e Deploy
-│   ├── lib.sh                  # 13 funcoes utilitarias (deploy, validacao, IAM, SQS, EventBridge)
+│   ├── lib.sh                  # 19 funcoes utilitarias (deploy, validacao, IAM, SQS, EventBridge)
 │   ├── deploy-api-flow.sh      # Provisiona API Gateway, SQS FIFO, Pre-Validator e Validator
 │   ├── deploy-s3-flow.sh       # Provisiona S3, SQS Standard, File Validator e Auditoria
 │   ├── deploy-order-processor.sh # Provisiona o Processador Central (persistencia)
@@ -154,6 +154,7 @@ aws-serverless-order-ingestion/
 │   ├── deploy-frontend.sh      # Frontend S3 + Lambdas read_order + test_controller
 │   └── validate-flow.sh        # Script automatizado de testes E2E
 ├── src/                        # Codigo-fonte das funcoes AWS Lambda
+│   ├── common/                 # Modulos utilitarios compartilhados (http, sqs, sns, utils)
 │   ├── pre_validator/          # Logica de pre-validacao e envio para SQS FIFO
 │   ├── order_validator/        # Logica de validacao (SQS → EventBridge + SNS)
 │   ├── batch_processor/        # Logica de extracao de arquivos e auditoria (S3 → DynamoDB)
@@ -241,7 +242,7 @@ chmod +x run.sh
 7.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
 
 ### Utilitários (scripts/lib.sh)
-Os scripts de deploy compartilham 13 funções utilitárias:
+Os scripts de deploy compartilham 19 funções utilitárias:
 
 | Função | Descrição |
 |--------|-----------|
@@ -258,6 +259,12 @@ Os scripts de deploy compartilham 13 funções utilitárias:
 | `validate_eventbridge_target` | Valida target da regra EventBridge (ARN + MessageGroupId) |
 | `validate_esm` | Valida event source mapping SQS → Lambda (UUID + estado Enabled) |
 | `put_eventbridge_target` | Configura target EventBridge com SqsParameters.MessageGroupId |
+| `ensure_iam_lambda_role` | Cria role IAM Lambda com AWSLambdaBasicExecutionRole (idempotente) |
+| `ensure_sqs_dlq` | Cria DLQ e retorna o ARN (FIFO ou Standard) |
+| `ensure_sqs_queue` | Cria fila SQS com DLQ, VisibilityTimeout, URL/ARN e validação |
+| `ensure_lambda_function` | Deploy Lambda com create/update, env vars e timeout |
+| `ensure_event_source_mapping` | Cria ou ignora event source mapping SQS → Lambda |
+| `setup_api_cors` | Configura OPTIONS + CORS completo em recurso do API Gateway |
 
 ---
 
