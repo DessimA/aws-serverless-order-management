@@ -3,6 +3,7 @@ import os
 import boto3
 from datetime import datetime
 import urllib.parse
+from common.sns import publish_error
 
 s3_client = boto3.client('s3')
 audit_table = boto3.resource('dynamodb').Table(os.environ['DYNAMODB_TABLE'])
@@ -37,17 +38,10 @@ def lambda_handler(event, context):
             except Exception as e:
                 status, details = "ERROR", str(e)
                 print(f"Error validating file {key}: {details}")
-                try:
-                    sns_client.publish(
-                        TopicArn=SNS_TOPIC_ARN,
-                        Subject=f"File Validation Error: {bucket}/{key}",
-                        Message=json.dumps({
-                            'file': f"s3://{bucket}/{key}",
-                            'error': details
-                        })
-                    )
-                except Exception as sns_err:
-                    print(f"Failed to publish SNS alert: {sns_err}")
+                publish_error(sns_client, SNS_TOPIC_ARN, f"File Validation Error: {bucket}/{key}", {
+                    'file': f"s3://{bucket}/{key}",
+                    'error': details
+                })
 
             audit_table.put_item(Item={
                 'file_name': key,

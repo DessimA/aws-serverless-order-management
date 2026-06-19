@@ -2,6 +2,7 @@ import json
 import os
 import boto3
 from datetime import datetime
+from common.http import api_response, error_response
 
 eventbridge = boto3.client('events')
 s3_client = boto3.client('s3')
@@ -10,44 +11,37 @@ EVENT_BUS_NAME = os.environ['EVENT_BUS_NAME']
 S3_BUCKET = os.environ['S3_BUCKET']
 
 def lambda_handler(event, context):
-    headers = {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST,GET,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
-    }
-
     if event.get('httpMethod') == 'OPTIONS':
-        return {'statusCode': 200, 'headers': headers, 'body': ''}
+        return {'statusCode': 200, 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST,GET,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type'}, 'body': ''}
 
     try:
         body = json.loads(event.get('body', '{}'))
         action = body.get('action')
 
         if not action:
-            return {'statusCode': 400, 'headers': headers, 'body': json.dumps({'error': 'action is required'})}
+            return error_response(400, 'action is required')
 
         if action == 'publish_event':
-            return handle_publish_event(body, headers)
+            return handle_publish_event(body)
         elif action == 'upload_file':
-            return handle_upload_file(body, headers)
+            return handle_upload_file(body)
         elif action == 'list_files':
-            return handle_list_files(body, headers)
+            return handle_list_files(body)
         else:
-            return {'statusCode': 400, 'headers': headers, 'body': json.dumps({'error': f'Unknown action: {action}'})}
+            return error_response(400, f'Unknown action: {action}')
 
     except json.JSONDecodeError:
-        return {'statusCode': 400, 'headers': headers, 'body': json.dumps({'error': 'Invalid JSON'})}
+        return error_response(400, 'Invalid JSON')
     except Exception as e:
-        return {'statusCode': 500, 'headers': headers, 'body': json.dumps({'error': str(e)})}
+        return error_response(500, str(e))
 
 
-def handle_publish_event(body, headers):
+def handle_publish_event(body):
     detail_type = body.get('detailType')
     detail = body.get('detail')
 
     if not detail_type or not detail:
-        return {'statusCode': 400, 'headers': headers, 'body': json.dumps({'error': 'detailType and detail are required'})}
+        return error_response(400, 'detailType and detail are required')
 
     response = eventbridge.put_events(
         Entries=[{
@@ -59,26 +53,22 @@ def handle_publish_event(body, headers):
         }]
     )
 
-    return {
-        'statusCode': 200,
-        'headers': headers,
-        'body': json.dumps({
-            'status': 'Event published',
-            'FailedEntryCount': response['FailedEntryCount'],
-            'detailType': detail_type,
-            'detail': detail,
-            'eventBus': EVENT_BUS_NAME
-        })
-    }
+    return api_response(200, {
+        'status': 'Event published',
+        'FailedEntryCount': response['FailedEntryCount'],
+        'detailType': detail_type,
+        'detail': detail,
+        'eventBus': EVENT_BUS_NAME
+    })
 
 
-def handle_upload_file(body, headers):
+def handle_upload_file(body):
     filename = body.get('filename')
     content = body.get('content')
     content_type = body.get('contentType', 'application/json')
 
     if not filename or content is None:
-        return {'statusCode': 400, 'headers': headers, 'body': json.dumps({'error': 'filename and content are required'})}
+        return error_response(400, 'filename and content are required')
 
     if isinstance(content, dict) or isinstance(content, list):
         content = json.dumps(content)
@@ -90,19 +80,15 @@ def handle_upload_file(body, headers):
         ContentType=content_type
     )
 
-    return {
-        'statusCode': 200,
-        'headers': headers,
-        'body': json.dumps({
-            'status': 'File uploaded',
-            'bucket': S3_BUCKET,
-            'key': filename,
-            's3_url': f's3://{S3_BUCKET}/{filename}'
-        })
-    }
+    return api_response(200, {
+        'status': 'File uploaded',
+        'bucket': S3_BUCKET,
+        'key': filename,
+        's3_url': f's3://{S3_BUCKET}/{filename}'
+    })
 
 
-def handle_list_files(body, headers):
+def handle_list_files(body):
     prefix = body.get('prefix', '')
 
     response = s3_client.list_objects_v2(
@@ -119,12 +105,8 @@ def handle_list_files(body, headers):
                 'lastModified': obj['LastModified'].isoformat() if hasattr(obj['LastModified'], 'isoformat') else str(obj['LastModified'])
             })
 
-    return {
-        'statusCode': 200,
-        'headers': headers,
-        'body': json.dumps({
-            'bucket': S3_BUCKET,
-            'files': files,
-            'count': len(files)
-        })
-    }
+    return api_response(200, {
+        'bucket': S3_BUCKET,
+        'files': files,
+        'count': len(files)
+    })
