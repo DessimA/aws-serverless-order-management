@@ -18,7 +18,7 @@ def lambda_handler(event, context):
     for record in event['Records']:
         try:
             envelope = parse_body(record)
-            order_detail = parse_detail(record)
+            order_detail = parse_detail(record, envelope=envelope)
 
             order_id = order_detail.get('pedidoId')
             if not order_id:
