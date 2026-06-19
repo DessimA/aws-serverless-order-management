@@ -13,41 +13,45 @@ SNS_TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
 
 def lambda_handler(event, context):
     print(f"File validation started: {json.dumps(event)}")
+    batch_item_failures = []
 
     for record in event['Records']:
-        notification_message = json.loads(record['body'])
-        if 'Records' not in notification_message and 'Message' in notification_message:
-            notification_message = json.loads(notification_message['Message'])
+        try:
+            notification_message = json.loads(record['body'])
 
-        for s3_event_record in notification_message.get('Records', []):
-            bucket = s3_event_record['s3']['bucket']['name']
-            key = urllib.parse.unquote_plus(s3_event_record['s3']['object']['key'])
+            for s3_event_record in notification_message.get('Records', []):
+                bucket = s3_event_record['s3']['bucket']['name']
+                key = urllib.parse.unquote_plus(s3_event_record['s3']['object']['key'])
 
-            status, details = "PROCESSED", None
+                status, details = "PROCESSED", None
 
-            try:
-                obj = s3_client.get_object(Bucket=bucket, Key=key)
-                data = json.loads(obj['Body'].read().decode('utf-8'))
+                try:
+                    obj = s3_client.get_object(Bucket=bucket, Key=key)
+                    data = json.loads(obj['Body'].read().decode('utf-8'))
 
-                if 'lista_pedidos' not in data:
-                    raise ValueError("Invalid Schema: 'lista_pedidos' key missing")
+                    if 'lista_pedidos' not in data:
+                        raise ValueError("Invalid Schema: 'lista_pedidos' key missing")
 
-                order_count = len(data['lista_pedidos'])
-                print(f"File {key} validated successfully with {order_count} orders")
+                    order_count = len(data['lista_pedidos'])
+                    print(f"File {key} validated successfully with {order_count} orders")
 
-            except Exception as e:
-                status, details = "ERROR", str(e)
-                print(f"Error validating file {key}: {details}")
-                publish_error(sns_client, SNS_TOPIC_ARN, f"File Validation Error: {bucket}/{key}", {
-                    'file': f"s3://{bucket}/{key}",
-                    'error': details
+                except Exception as e:
+                    status, details = "ERROR", str(e)
+                    print(f"Error validating file {key}: {details}")
+                    publish_error(sns_client, SNS_TOPIC_ARN, f"File Validation Error: {bucket}/{key}", {
+                        'file': f"s3://{bucket}/{key}",
+                        'error': details
+                    })
+
+                audit_table.put_item(Item={
+                    'file_name': key,
+                    'status': status,
+                    'timestamp': datetime.utcnow().isoformat() + "Z",
+                    'details': details or "OK"
                 })
 
-            audit_table.put_item(Item={
-                'file_name': key,
-                'status': status,
-                'timestamp': datetime.utcnow().isoformat() + "Z",
-                'details': details or "OK"
-            })
+        except Exception as e:
+            print(f"Error processing SQS record: {e}")
+            batch_item_failures.append({"itemIdentifier": record['messageId']})
 
-    return {'statusCode': 200}
+    return {"batchItemFailures": batch_item_failures}

@@ -12,6 +12,7 @@ SNS_TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
 
 def lambda_handler(event, context):
     print(f"Validation processing: {json.dumps(event)}")
+    batch_item_failures = []
 
     for record in event['Records']:
         try:
@@ -52,6 +53,6 @@ def lambda_handler(event, context):
                 'error': str(e),
                 'body': record.get('body', 'N/A')
             })
-            raise
+            batch_item_failures.append({"itemIdentifier": record['messageId']})
 
-    return {'statusCode': 200}
+    return {"batchItemFailures": batch_item_failures}
