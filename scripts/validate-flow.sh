@@ -62,6 +62,31 @@ else
     echo "  DynamoDB response: $DDB_RESULT"
 fi
 
+echo ""
+echo "--- Test 1b: Duplicate Order (same pedidoId) ---"
+echo "Re-sending same order $ORDER_ID to test idempotency..."
+DUP_RESPONSE=$(curl -s -X POST "$ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"pedidoId\":\"$ORDER_ID\",\"clienteId\":\"CLI-TEST1\",\"itens\":[{\"sku\":\"ITEM-TESTE\",\"qtd\":2,\"preco\":25.0}]}" 2>&1 || echo "CURL_FAILED:$?")
+if echo "$DUP_RESPONSE" | grep -q "Order accepted"; then
+    echo "PASS: Duplicate order accepted by API (expected - SQS dedup bypassed by uuid4)"
+else
+    echo "WARN: Duplicate API response: $DUP_RESPONSE"
+fi
+
+echo "Waiting 20s for duplicate processing..."
+sleep 20
+
+echo "--- Verifying duplicate did NOT overwrite ---"
+DUP_DDB=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$ORDER_ID\"}}" --region "$AWS_REGION" 2>&1)
+DUP_ITEMS=$(echo "$DUP_DDB" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('Item',{}).get('items',[])))" 2>/dev/null || echo "0")
+if echo "$DUP_DDB" | grep -q "PROCESSED"; then
+    echo "PASS: Order $ORDER_ID still exists with status PROCESSED (not overwritten)"
+else
+    echo "FAIL: Order $ORDER_ID changed state after duplicate"
+    echo "  Response: $DUP_DDB"
+fi
+
 # === 2. S3 flow ===
 echo ""
 echo "--- Test 2: S3 File Upload (Validation + Audit only) ---"
