@@ -206,3 +206,155 @@ Adicionado `print(f"DynamoDB ClientError reading order: {e}")` no bloco `except 
 Implementado loop com `ContinuationToken` que percorre todas as paginas. O limite de 1000 objetos por pagina e mantido como padrao do S3 (`MaxKeys`). Para buckets com muitos objetos, todas as paginas sao retornadas sem limite artificial.
 
 ---
+
+## Rodada 3
+
+### 1. [IMPORTANTE] Escopo amplo de permissao Lambda pre_validator
+
+**Localizacao:** `scripts/deploy-api-flow.sh:122`
+
+**Problema:** `source-arn` usava `"arn:aws:execute-api:$AWS_REGION:$ACCOUNT_ID:$REST_API_ID/*"`, permitindo que qualquer metodo/recurso invocasse a Lambda.
+
+**Correcao:** Restrito para `"arn:aws:execute-api:$AWS_REGION:$ACCOUNT_ID:$REST_API_ID/*/POST/orders"`.
+
+**Justificativa:** Segue o padrao de least privilege ja aplicado em `deploy-frontend.sh` para `read_order` (`/*/GET/orders/{orderId}`) e `test_controller` (`/*/POST/test`).
+
+---
+
+### 2. [IMPORTANTE] Descarte silencioso de mensagens malformadas no order_validator
+
+**Localizacao:** `src/order_validator/index.py:24-26`
+
+**Problema:** Record sem `pedidoId` ou `clienteId` era apenas logado com `print()` e descartado via `continue`, sem alerta SNS e sem rastreabilidade.
+
+**Correcao:** Adicionada chamada a `publish_error(sns_client, SNS_TOPIC_ARN, ...)` com o conteudo do record antes do `continue`. Nao adiciona a `messageId` em `batchItemFailures` pois reenvio nao resolve payload malformado.
+
+**Justificativa:** Mesmo padrao de correcao aplicado nas rodadas 1 e 2 para `order_processor` e `lifecycle_ops`. Garante rastreabilidade mesmo para mensagens inseridas diretamente na fila (replay manual, bug futuro).
+
+**Fluxo de erros:**
+
+```mermaid
+flowchart TD
+    A["Record SQS"] --> B{"Campos pedidoId<br/>e clienteId<br/>presentes?"}
+    B -->|"Nao"| C["Publica alerta SNS<br/>(campo ausente)"]
+    C --> D["Continue (sem retry)"]
+    B -->|"Sim"| E["Publica evento<br/>OrderValidated<br/>no EventBridge"]
+    E --> F{"FailedEntryCount<br/>> 0?"}
+    F -->|"Nao"| G["Log: sucesso"]
+    F -->|"Sim"| H["Publica alerta SNS<br/>(erro EventBridge)"]
+    H --> I["Adiciona messageId<br/>em batchItemFailures"]
+    I --> J["Retry via SQS"]
+```
+
+---
+
+### 3. [MENOR] Mensagem de log de validate_sqs_queue desatualizada
+
+**Localizacao:** `scripts/lib.sh:235`
+
+**Problema:** `echo "  OK: Fila SQS VisibilityTimeout=90"` com valor hardcoded de antes da parametrizacao.
+
+**Correcao:** Substituido por `echo "  OK: Fila SQS VisibilityTimeout=$VISIBILITY_TIMEOUT"`.
+
+**Justificativa:** A mensagem agora reflete o valor real parametrizavel (padrao 360s).
+
+---
+
+### 4. [MENOR] VisibilityTimeout desatualizado no README
+
+**Localizacao:** `README.md`, secao 9, tabela de utilitarios.
+
+**Problema:** `validate_sqs_queue` documentava "Valida VisibilityTimeout=90".
+
+**Correcao:** Atualizado para "Valida VisibilityTimeout=$VISIBILITY_TIMEOUT (padrao 360s) e ContentBasedDeduplication (se FIFO)".
+
+**Justificativa:** Consistencia com o valor real parametrizado.
+
+---
+
+### 5. [MENOR] Contagem incorreta de Lambdas no docs/common.md
+
+**Localizacao:** `docs/common.md:25`
+
+**Problema:** "Seis das oito Lambdas precisam de logica de resposta HTTP e/ou publicacao SNS."
+
+**Correcao:** "Todas as oito Lambdas dependem de common.http e/ou common.sns."
+
+**Justificativa:** Auditoria de imports mostra que as 8 Lambdas dependem de `common.http` ou `common.sns`.
+
+---
+
+### 6. [MENOR] Contagem de funcoes utilitarias desatualizada no README
+
+**Localizacao:** `README.md`, secao 9.
+
+**Problema:** Texto citava "19 funcoes utilitarias" e tabela listava 19 linhas, mas `scripts/lib.sh` tem 22 funcoes. `validate_resource_suffix`, `get_endpoint_url` e `poll_resource` estavam ausentes.
+
+**Correcao:** Atualizado texto para "22 funcoes" e adicionadas as 3 funcoes faltantes a tabela.
+
+**Justificativa:** Contagem real do codigo fonte.
+
+---
+
+### 7. [MENOR] Codigo morto e duplicacao de timestamp
+
+**Arquivos:** `src/common/utils.py`, `src/order_processor/index.py`, `src/lifecycle_ops/index.py`, `src/batch_processor/index.py`, `src/order_validator/index.py`
+
+**Problema:** `generate_id()` em `common/utils.py` nunca era usado. `utcnow_iso()` nao era importado por nenhuma Lambda. Tres (na verdade quatro) Lambdas reimplementavam `datetime.utcnow().isoformat() + "Z"` manualmente. `datetime.utcnow()` e depreciado no Python 3.12.
+
+**Correcao:**
+- `generate_id()` removido.
+- `utcnow_iso()` alterado para usar `datetime.now(timezone.utc)` com `.replace("+00:00", "Z")`.
+- `order_processor`, `lifecycle_ops`, `batch_processor` e `order_validator` agora importam `utcnow_iso` de `common.utils`.
+
+**Justificativa:** Elimina duplicacao e uso de API depreciada. Centraliza logica de timestamp no modulo `common` conforme proposto em `docs/common.md`.
+
+---
+
+### 8. [MENOR] Caracteres travessao em documentacao
+
+**Arquivos:** `README.md` (secao 4.2, duas ocorrencias do titulo e uma ocorrencia no texto), `CONTRIBUTING.md` (uma ocorrencia).
+
+**Problema:** Uso do caractere "--" (em dash).
+
+**Correcao:** Substituido por dois-pontos e virgula conforme o contexto.
+
+**Justificativa:** Padrao de escrita do projeto.
+
+---
+
+### 9. [MENOR] Item de checklist duplicado no PR template
+
+**Localizacao:** `.github/PULL_REQUEST_TEMPLATE.md:23-24`
+
+**Problema:** "Shell scripts use `set -euo pipefail`" e "`set -euo pipefail` is present where required" verificam a mesma coisa.
+
+**Correcao:** Removido o segundo item duplicado.
+
+**Justificativa:** Checklist sem redundancia.
+
+---
+
+### 10. [MENOR] Campos de valid_batch.json com nomenclatura divergente
+
+**Localizacao:** `samples/valid_batch.json`
+
+**Problema:** Usava `id_pedido_arquivo`, `id_cliente_arquivo`, `itens_pedido_arquivo` em vez de `pedidoId`, `clienteId`, `itens`.
+
+**Correcao:** Renomeado para `pedidoId`, `clienteId`, `itens`, alinhado com `samples/api_request.json`.
+
+**Justificativa:** Consistencia de nomenclatura em todo o sistema.
+
+---
+
+### 11. [MENOR] Dependencia implicita sem checagem amigavel
+
+**Arquivos:** `scripts/deploy-order-processor.sh`, `scripts/deploy-lifecycle-ops.sh`
+
+**Problema:** `SNS_TOPIC_ARN` era resolvido com `get-topic-attributes ... || echo ""`, resultando em variavel vazia e erro generico se `deploy-api-flow.sh` nao tivesse rodado antes.
+
+**Correcao:** Adicionada checagem explicita no inicio de ambos os scripts, falhando com mensagem clara se o topico SNS nao existir.
+
+**Justificativa:** Padrao ja usado em `scripts/deploy-frontend.sh` para verificacao de dependencias (tabela DynamoDB, EventBus). Falha cedo com mensagem acionavel.
+
+---
