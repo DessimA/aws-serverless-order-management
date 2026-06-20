@@ -1,6 +1,7 @@
 import os
 import boto3
 from datetime import datetime
+from decimal import Decimal
 from botocore.exceptions import ClientError
 from common.sqs import parse_detail
 from common.sns import publish_error
@@ -8,6 +9,16 @@ from common.sns import publish_error
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
 sns_client = boto3.client('sns')
 production_table = boto3.resource("dynamodb").Table(os.environ["DYNAMODB_TABLE"])
+
+
+def _to_decimal(obj):
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    if isinstance(obj, dict):
+        return {k: _to_decimal(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_decimal(v) for v in obj]
+    return obj
 
 
 def _process(order_id, update_expression, expression_values):
@@ -49,7 +60,7 @@ def _handler(event, context, operation):
                         order_id,
                         "SET #i = :items, #s = :status, updatedAt = :ts",
                         {
-                            ":items": new_items,
+                            ":items": _to_decimal(new_items),
                             ":status": "UPDATED",
                             ":ts": datetime.utcnow().isoformat() + "Z",
                         },

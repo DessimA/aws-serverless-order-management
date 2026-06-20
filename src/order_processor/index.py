@@ -2,6 +2,7 @@ import json
 import os
 import boto3
 from datetime import datetime
+from decimal import Decimal
 from botocore.exceptions import ClientError
 from common.sqs import parse_detail, parse_body
 from common.sns import publish_error
@@ -10,6 +11,16 @@ DYNAMODB_TABLE = os.environ['DYNAMODB_TABLE']
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
 sns_client = boto3.client('sns')
 production_table = boto3.resource('dynamodb').Table(DYNAMODB_TABLE)
+
+def _to_decimal(obj):
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    if isinstance(obj, dict):
+        return {k: _to_decimal(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_decimal(v) for v in obj]
+    return obj
+
 
 def lambda_handler(event, context):
     print(f"Processing event from queue: {json.dumps(event)}")
@@ -35,7 +46,7 @@ def lambda_handler(event, context):
                 'eventTime': envelope.get('time')
             }
 
-            clean_item = {k: v for k, v in dynamodb_item.items() if v is not None}
+            clean_item = _to_decimal({k: v for k, v in dynamodb_item.items() if v is not None})
 
             production_table.put_item(
                 Item=clean_item,
