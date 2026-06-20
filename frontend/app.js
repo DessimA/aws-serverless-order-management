@@ -299,7 +299,7 @@ function buildManagePayload(scenario) {
     const produto = document.getElementById('mgmtProduto').value.trim() || 'Curso Azure';
     const qtd = parseInt(document.getElementById('mgmtQtd').value, 10) || 3;
     const preco = parseFloat(document.getElementById('mgmtPreco').value) || 199.90;
-    return { orderId, novosItens: [{ sku: produto.replace(/\s+/g, '-'), qtd, preco }] };
+    return { pedidoId: orderId, novosItens: [{ sku: produto.replace(/\s+/g, '-'), qtd, preco }] };
 }
 
 async function testLifecycle(scenario) {
@@ -323,7 +323,7 @@ async function testLifecycle(scenario) {
     });
 
     const type = res.status < 400 ? 'pass' : 'fail';
-    showInlineResult('manage', type, label, res.data, { 'Order ID': mgmt.orderId });
+    showInlineResult('manage', type, label, res.data, { 'Order ID': mgmt.pedidoId });
     logResponse(type, label, res);
 }
 
@@ -343,7 +343,7 @@ async function testCancelledUpdate() {
     await new Promise(r => setTimeout(r, 2000));
 
     log('warn', label, '2/2: Tentando atualizar pedido cancelado...');
-    const mgmt = { orderId, novosItens: [{ sku: 'SHOULD-NOT-APPEAR', qtd: 999, preco: 1.0 }] };
+    const mgmt = { pedidoId: orderId, novosItens: [{ sku: 'SHOULD-NOT-APPEAR', qtd: 999, preco: 1.0 }] };
     res = await apiFetch(TEST_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
