@@ -81,7 +81,6 @@ poll_resource "duplicate order $ORDER_ID stability" 12 10 \
 
 echo "--- Verifying duplicate did NOT overwrite ---"
 DUP_DDB=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$ORDER_ID\"}}" --region "$AWS_REGION" 2>&1)
-DUP_ITEMS=$(echo "$DUP_DDB" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('Item',{}).get('items',[])))" 2>/dev/null || echo "0")
 if echo "$DUP_DDB" | grep -q "PROCESSED"; then
     echo "PASS: Order $ORDER_ID still exists with status PROCESSED (not overwritten)"
 else
@@ -163,6 +162,30 @@ if echo "$UPDATE_RESULT" | grep -q "UPDATED"; then
 else
     echo "FAIL: Order $ORDER_ID was NOT updated"
     echo "  DynamoDB result: $UPDATE_RESULT"
+fi
+
+# === 4b. Cancel then attempt update (must remain CANCELLED) ===
+echo ""
+echo "--- Test 4b: Cancel then Update (CANCELLED must be terminal) ---"
+CANCEL_DETAIL_4b="{\"pedidoId\":\"$ORDER_ID\"}"
+CANCEL_DETAIL_4b_ESC=$(echo "$CANCEL_DETAIL_4b" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))' | sed 's/^"//;s/"$//')
+aws events put-events --region "$AWS_REGION" --entries "[{\"Source\":\"app.orders.operations\",\"DetailType\":\"OrderCancelled\",\"Detail\":\"$CANCEL_DETAIL_4b_ESC\",\"EventBusName\":\"$EVENT_BUS_NAME\"}]" >/dev/null 2>&1 && echo "PASS: Cancel event published for 4b" || echo "WARN: Could not publish cancel event"
+
+poll_resource "order $ORDER_ID with status CANCELLED" 12 10 \
+    "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'CANCELLED'" || true
+
+UPDATE_DETAIL_4b="{\"pedidoId\":\"$ORDER_ID\",\"novosItens\":[{\"sku\":\"SHOULD-NOT-APPEAR\",\"qtd\":999,\"preco\":1.0}]}"
+UPDATE_DETAIL_4b_ESC=$(echo "$UPDATE_DETAIL_4b" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))' | sed 's/^"//;s/"$//')
+aws events put-events --region "$AWS_REGION" --entries "[{\"Source\":\"app.orders.operations\",\"DetailType\":\"OrderUpdated\",\"Detail\":\"$UPDATE_DETAIL_4b_ESC\",\"EventBusName\":\"$EVENT_BUS_NAME\"}]" >/dev/null 2>&1 && echo "PASS: Update event published for 4b" || echo "WARN: Could not publish update event"
+
+sleep 5
+
+CANCEL_UPDATE_CHECK=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$ORDER_ID\"}}" --region "$AWS_REGION" 2>&1)
+if echo "$CANCEL_UPDATE_CHECK" | grep -q "CANCELLED"; then
+    echo "PASS: Order $ORDER_ID remains CANCELLED after update attempt (terminal state enforced)"
+else
+    echo "FAIL: Order $ORDER_ID status changed after cancelled update attempt"
+    echo "  DynamoDB result: $CANCEL_UPDATE_CHECK"
 fi
 
 # === 5. Read Order via API Gateway ===
