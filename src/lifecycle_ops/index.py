@@ -21,19 +21,22 @@ def _to_decimal(obj):
     return obj
 
 
-def _process(order_id, update_expression, expression_values, expression_attribute_names=None):
+def _process(order_id, update_expression, expression_values, expression_attribute_names=None, extra_condition=""):
     if not order_id:
         print("Skipping record with missing pedidoId")
         return
     names = {"#s": "status"}
     if expression_attribute_names:
         names.update(expression_attribute_names)
+    condition = "attribute_exists(orderId)"
+    if extra_condition:
+        condition += f" AND {extra_condition}"
     production_table.update_item(
         Key={"orderId": str(order_id)},
         UpdateExpression=update_expression,
         ExpressionAttributeNames=names,
         ExpressionAttributeValues=expression_values,
-        ConditionExpression="attribute_exists(orderId)",
+        ConditionExpression=condition,
     )
 
 
@@ -66,21 +69,28 @@ def _handler(event, context, operation):
                             ":items": _to_decimal(new_items),
                             ":status": "UPDATED",
                             ":ts": utcnow_iso(),
+                            ":cancelledStatus": "CANCELLED",
                         },
                         expression_attribute_names={"#i": "items"},
+                        extra_condition="#s <> :cancelledStatus",
                     )
                     print(f"Order {order_id} updated with new items")
                 else:
                     print(f"Skipping record with missing or empty data for order {order_id}")
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                action = "cancellation" if operation == "cancel" else "update"
-                print(f"Order not found for {action}, skipping.")
+                if operation == "cancel":
+                    action = "cancellation"
+                    msg = "Order does not exist, cancellation skipped."
+                else:
+                    action = "update"
+                    msg = "Order does not exist or is already cancelled, update skipped."
+                print(f"Condition failed for {action}, skipping.")
                 if SNS_TOPIC_ARN:
                     publish_error(sns_client, SNS_TOPIC_ARN, f"Order Not Found for {action}", {
                         'orderId': str(order_id),
                         'operation': action,
-                        'message': f"Order does not exist, {action} skipped."
+                        'message': msg
                     })
             else:
                 print(f"DynamoDB error: {e}")
