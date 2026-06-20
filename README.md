@@ -88,13 +88,13 @@ Projetada para integração com sistemas legados ou parceiros que exportam arqui
 *   **Nota:** Diferente de versões anteriores, este fluxo **não** publica eventos no EventBridge. Pedidos em lote são apenas validados e auditados, não criam registros na tabela de produção.
 
 ### 4.3. Barramento de Eventos (EventBridge)
-Atua como o sistema nervoso central da arquitetura. Ele recebe eventos exclusivamente da Lambda `order_validator` (fluxo API síncrono). Através de **Regras (Rules)** baseadas em padrões de eventos (`source` e `detail-type`), o EventBridge roteia os dados para as filas SQS FIFO específicas de cada operação (Criação, Alteração ou Cancelamento).
+Atua como o sistema nervoso central da arquitetura. Ele recebe eventos da Lambda `order_validator` (fluxo de criação via API) e do `test_controller` (fluxo de teste de cancelamento/atualização). Através de **Regras (Rules)** baseadas em padrões de eventos (`source` e `detail-type`), o EventBridge roteia os dados para as filas SQS específicas de cada operação (Criação, Alteração ou Cancelamento).
 
-Cada regra do EventBridge para filas FIFO especifica obrigatoriamente um `MessageGroupId` via `SqsParameters`, exigência da AWS para entrega em filas FIFO.
+Regras do EventBridge para filas Standard nao exigem `SqsParameters.MessageGroupId`, permitindo processamento paralelo. A fila de validacao (SQS FIFO) nao possui target do EventBridge, recebendo mensagens diretamente do pre_validator.
 
 ### 4.4. Camada de Persistência e Ciclo de Vida
-As Lambdas de processamento final são acionadas por filas SQS FIFO que atuam como buffers de carga.
-*   **Order Processor:** Cria o registro inicial na tabela `order-production-data` com `ConditionExpression: attribute_not_exists(orderId)` para impedir sobrescrita de pedidos duplicados.
+As Lambdas de processamento final são acionadas por filas SQS que atuam como buffers de carga.
+*   **Order Processor (implantado como `order-persister-*`):** Cria o registro inicial na tabela `order-production-data` com `ConditionExpression: attribute_not_exists(orderId)` para impedir sobrescrita de pedidos duplicados.
 *   **Update Processor:** Atualiza itens de pedidos existentes utilizando `UpdateExpression` e `ConditionExpression: attribute_exists(orderId)` para garantir que o pedido existe antes de alterá-lo.
 *   **Cancel Processor:** Altera o status do pedido para `CANCELLED` com `ConditionExpression: attribute_exists(orderId)`, prevenindo criação de registros fantasmas.
 
