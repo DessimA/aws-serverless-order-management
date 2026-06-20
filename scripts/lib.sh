@@ -343,7 +343,7 @@ ensure_sqs_dlq() {
     if ! aws sqs get-queue-url --queue-name "$dlq_name" --region "$region" >/dev/null 2>&1; then
         local attrs="{}"
         [ "$fifo" == "true" ] && attrs='{"FifoQueue":"true"}'
-        aws sqs create-queue --queue-name "$dlq_name" --attributes "$attrs" --region "$region"
+        aws sqs create-queue --queue-name "$dlq_name" --attributes "$attrs" --region "$region" >/dev/null
     fi
     local url
     url=$(aws sqs get-queue-url --queue-name "$dlq_name" --region "$region" --query QueueUrl --output text)
