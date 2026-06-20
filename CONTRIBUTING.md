@@ -37,7 +37,7 @@ Thanks for your interest in contributing to this project.
 - Python 3.12 + boto3.
 - Lambda handlers receive `event` and `context`.
 - Use `json.loads(event['body'])` for API Gateway payloads.
-- Use `json.loads(event['detail'])` for EventBridge payloads.
+- Use `common.sqs.parse_body()` and `common.sqs.parse_detail()` for SQS/EventBridge payloads instead of direct `json.loads(event['detail'])`, because EventBridge may deliver `detail` as a native dict (see docs/common.md).
 
 ### Commits
 - Use conventional prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`.
