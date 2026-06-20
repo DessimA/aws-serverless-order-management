@@ -1,9 +1,9 @@
 {
   "lista_pedidos": [
     {
-      "id_pedido_arquivo": "S3-BATCH-001",
-      "id_cliente_arquivo": "CORP-USR-01",
-      "itens_pedido_arquivo": [{"sku": "AWS-VOUCHER-PRO", "qtd": 5}]
+      "pedidoId": "S3-BATCH-001",
+      "clienteId": "CORP-USR-01",
+      "itens": [{"sku": "AWS-VOUCHER-PRO", "qtd": 5}]
     }
   ]
 }
