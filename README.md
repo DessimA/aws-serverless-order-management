@@ -15,69 +15,44 @@ O sistema suporta múltiplos canais de entrada e gerencia o ciclo de vida comple
 A arquitetura utiliza SQS FIFO como buffer de validação, EventBridge como barramento de eventos central, e SQS como buffer de processamento para cada operação. Abaixo, o fluxograma técnico da solução:
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph "Camada de Ingestao"
-        A[Cliente API] -- HTTP POST --> B(API Gateway)
-        B -- Proxy --> C{Lambda Pre-Validator}
-        C --> D[SQS FIFO<br/>Validacao]
-        D --> E{Lambda Validator}
-        F[Parceiro S3] -- JSON Upload --> G[(S3 Data Lake)]
-        G -- Event Notification --> H[SQS Standard<br/>Arquivos]
-        H --> I{Lambda File Validator}
+        A["Cliente API"] -- "HTTP POST" --> B("API Gateway")
+        B -- "Proxy" --> C{"Lambda Pre-Validator"}
+        C --> D["SQS FIFO (Validacao)"]
+        D --> E{"Lambda Validator"}
+        F["Parceiro S3"] -- "JSON Upload" --> G[("S3 Data Lake")]
+        G -- "Event Notification" --> H["SQS Standard (Arquivos)"]
+        H --> I{"Lambda File Validator"}
     end
 
     subgraph "Roteamento de Eventos (Bus)"
-        E -- Publish --> J[EventBridge Custom Bus]
-        I -- Audit Log --> K[(DynamoDB Audit)]
-        I -- Error Alert --> L[SNS Notifications]
+        E -- "Publish" --> J["EventBridge Custom Bus"]
+        I -- "Audit Log" --> K[("DynamoDB Audit")]
+        I -- "Error Alert" --> L["SNS Notifications"]
     end
 
     subgraph "Operacoes de Ciclo de Vida"
-        J -- Rule --> M[SQS FIFO<br/>Pedidos Pendentes] -- Trigger --> N{Order Processor}
-        J -- Rule --> O[SQS FIFO<br/>Cancelar Pedido] -- Trigger --> P{Cancel Processor}
-        J -- Rule --> Q[SQS FIFO<br/>Alterar Pedido] -- Trigger --> R{Update Processor}
+        J -- "Rule" --> M["SQS FIFO (Pedidos Pendentes)"] -- "Trigger" --> N{"Order Processor"}
+        J -- "Rule" --> O["SQS FIFO (Cancelar Pedido)"] -- "Trigger" --> P{"Cancel Processor"}
+        J -- "Rule" --> Q["SQS FIFO (Alterar Pedido)"] -- "Trigger" --> R{"Update Processor"}
     end
 
     subgraph "Persistencia"
-        N -- Create --> S[(DynamoDB Production)]
-        P -- Update --> S
-        R -- Update --> S
+        N -- "Create" --> S[("DynamoDB Production")]
+        P -- "Update" --> S
+        R -- "Update" --> S
     end
 
     subgraph "Frontend de Testes"
-        T[S3 Static Website<br/>Testing Dashboard]
-        T -- POST --> B
-        T -- POST --> X{Test Controller<br/>Lambda}
-        T -- GET --> Y[GET /orders/:id]
-        Y --> V[Lambda Order Reader]
-        X -- Publish --> J
-        X -- Upload --> G
+        T["S3 Static Website (Testing Dashboard)"]
+        T -- "POST" --> B
+        T -- "POST" --> X{"Test Controller Lambda"}
+        T -- "GET" --> Y["GET /orders/:id"]
+        Y --> V["Lambda Order Reader"]
+        X -- "Publish" --> J
+        X -- "Upload" --> G
     end
-
-    %% Estilizacao para alto contraste (Fonte Branca)
-    style A fill:#232F3E,stroke:#fff,color:#fff
-    style B fill:#4A148C,stroke:#fff,color:#fff
-    style C fill:#333399,stroke:#fff,color:#fff
-    style D fill:#880E4F,stroke:#fff,color:#fff
-    style E fill:#333399,stroke:#fff,color:#fff
-    style F fill:#232F3E,stroke:#fff,color:#fff
-    style G fill:#1B5E20,stroke:#fff,color:#fff
-    style H fill:#880E4F,stroke:#fff,color:#fff
-    style I fill:#333399,stroke:#fff,color:#fff
-    style J fill:#BF360C,stroke:#fff,stroke-width:4px,color:#fff
-    style K fill:#0D47A1,stroke:#fff,color:#fff
-    style L fill:#880E4F,stroke:#fff,color:#fff
-    style M fill:#880E4F,stroke:#fff,color:#fff
-    style N fill:#333399,stroke:#fff,color:#fff
-    style O fill:#880E4F,stroke:#fff,color:#fff
-    style P fill:#333399,stroke:#fff,color:#fff
-    style Q fill:#880E4F,stroke:#fff,color:#fff
-    style R fill:#333399,stroke:#fff,color:#fff
-    style S fill:#0D47A1,stroke:#fff,color:#fff
-    style T fill:#1B5E20,stroke:#fff,color:#fff
-    style X fill:#333399,stroke:#fff,color:#fff
-    style Y fill:#4A148C,stroke:#fff,color:#fff
-    style V fill:#333399,stroke:#fff,color:#fff
 ```
 
 ## 3. Stack Tecnológica
