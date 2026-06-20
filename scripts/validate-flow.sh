@@ -145,22 +145,30 @@ else
     echo "  DynamoDB result: $CANCEL_RESULT"
 fi
 
-# === 4. Lifecycle Update ===
+# === 4. Lifecycle Update (fresh order, not cancelled) ===
 echo ""
-echo "--- Test 4: Update Operation via EventBridge ---"
-UPDATE_DETAIL="{\"pedidoId\":\"$ORDER_ID\",\"novosItens\":[{\"sku\":\"ITEM-ATUALIZADO\",\"qtd\":5,\"preco\":150.0}]}"
+echo "--- Test 4: Update Operation via EventBridge (fresh order) ---"
+UPDATE_ORDER_ID="ORD-$(date +%s)-$$-UPD"
+echo "Creating fresh order $UPDATE_ORDER_ID for update test..."
+curl -s -X POST "$ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"pedidoId\":\"$UPDATE_ORDER_ID\",\"clienteId\":\"CLI-TEST1\",\"itens\":[{\"sku\":\"ITEM-TESTE\",\"qtd\":2,\"preco\":25.0}]}" >/dev/null 2>&1
+poll_resource "order $UPDATE_ORDER_ID with status PROCESSED" 12 10 \
+    "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$UPDATE_ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'PROCESSED'" || true
+
+UPDATE_DETAIL="{\"pedidoId\":\"$UPDATE_ORDER_ID\",\"novosItens\":[{\"sku\":\"ITEM-ATUALIZADO\",\"qtd\":5,\"preco\":150.0}]}"
 UPDATE_DETAIL_ESCAPED=$(echo "$UPDATE_DETAIL" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))' | sed 's/^"//;s/"$//')
 aws events put-events --region "$AWS_REGION" --entries "[{\"Source\":\"app.orders.operations\",\"DetailType\":\"OrderUpdated\",\"Detail\":\"$UPDATE_DETAIL_ESCAPED\",\"EventBusName\":\"$EVENT_BUS_NAME\"}]" >/dev/null 2>&1 && echo "PASS: Update event published" || echo "WARN: Could not publish update event"
 
 echo "Waiting for update processing..."
-poll_resource "order $ORDER_ID with status UPDATED" 12 10 \
-    "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'UPDATED'" || true
+poll_resource "order $UPDATE_ORDER_ID with status UPDATED" 12 10 \
+    "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$UPDATE_ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'UPDATED'" || true
 
-UPDATE_RESULT=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$ORDER_ID\"}}" --region "$AWS_REGION" 2>&1)
+UPDATE_RESULT=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$UPDATE_ORDER_ID\"}}" --region "$AWS_REGION" 2>&1)
 if echo "$UPDATE_RESULT" | grep -q "UPDATED"; then
-    echo "PASS: Order $ORDER_ID updated successfully"
+    echo "PASS: Order $UPDATE_ORDER_ID updated successfully"
 else
-    echo "FAIL: Order $ORDER_ID was NOT updated"
+    echo "FAIL: Order $UPDATE_ORDER_ID was NOT updated"
     echo "  DynamoDB result: $UPDATE_RESULT"
 fi
 
@@ -191,15 +199,16 @@ fi
 # === 5. Read Order via API Gateway ===
 echo ""
 echo "--- Test 5: GET /orders/{orderId} via read_order Lambda ---"
-READ_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders/${ORDER_ID}")
+READ_ORDER_ID="${UPDATE_ORDER_ID:-$ORDER_ID}"
+READ_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders/${READ_ORDER_ID}")
 READ_RESPONSE=$(curl -s "$READ_ENDPOINT" 2>&1 || echo "CURL_FAILED:$?")
-if echo "$READ_RESPONSE" | grep -q "PROCESSED"; then
-    echo "PASS: GET /orders/$ORDER_ID returned order with status PROCESSED"
+if echo "$READ_RESPONSE" | grep -q "UPDATED"; then
+    echo "PASS: GET /orders/$READ_ORDER_ID returned order with status UPDATED"
 elif echo "$READ_RESPONSE" | grep -q "orderId"; then
-    echo "WARN: GET /orders/$ORDER_ID returned data but without PROCESSED status"
+    echo "WARN: GET /orders/$READ_ORDER_ID returned data but without UPDATED status"
     echo "  Response: $READ_RESPONSE"
 else
-    echo "FAIL: GET /orders/$ORDER_ID failed"
+    echo "FAIL: GET /orders/$READ_ORDER_ID failed"
     echo "  Response: $READ_RESPONSE"
 fi
 
