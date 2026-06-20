@@ -1,8 +1,8 @@
 import json
 import os
 import boto3
-from datetime import datetime
 from common.sns import publish_error
+from common.utils import utcnow_iso
 
 eventbridge_client = boto3.client('events')
 sns_client = boto3.client('sns')
@@ -22,7 +22,12 @@ def lambda_handler(event, context):
             client_id = body.get('clienteId')
 
             if not order_id or not client_id:
-                print(f"Skipping record with missing pedidoId or clienteId")
+                error_msg = "Skipping record with missing pedidoId or clienteId"
+                print(error_msg)
+                publish_error(sns_client, SNS_TOPIC_ARN, "Order Validation Malformed Record", {
+                    'error': error_msg,
+                    'body': record.get('body', 'N/A')
+                })
                 continue
 
             event_detail = {
@@ -30,7 +35,7 @@ def lambda_handler(event, context):
                 'clienteId': str(client_id),
                 'itens': body.get('itens', []),
                 'origem': 'API',
-                'timestamp': datetime.utcnow().isoformat() + "Z"
+                'timestamp': utcnow_iso()
             }
 
             response = eventbridge_client.put_events(
