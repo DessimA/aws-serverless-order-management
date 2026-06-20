@@ -104,12 +104,13 @@ else
     echo "FAIL: Upload failed"
 fi
 
+AUDIT_TABLE="order-batch-audit-${RESOURCE_SUFFIX}"
+
 echo "Waiting for SQS + LambdaFileVal processing..."
 poll_resource "S3 batch audit record with status PROCESSED" 12 10 \
     "aws dynamodb query --table-name \"$AUDIT_TABLE\" --key-condition-expression 'file_name = :f' --expression-attribute-values '{\":f\":{\"S\":\"$S3_KEY\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'PROCESSED'" || true
 
 echo "--- Checking S3 batch audit table (should have PROCESSED entry) ---"
-AUDIT_TABLE="order-batch-audit-${RESOURCE_SUFFIX}"
 AUDIT_RESULT=$(aws dynamodb query --table-name "$AUDIT_TABLE" --key-condition-expression "file_name = :f" --expression-attribute-values "{\":f\":{\"S\":\"$S3_KEY\"}}" --region "$AWS_REGION" 2>&1)
 if echo "$AUDIT_RESULT" | grep -q "PROCESSED"; then
     echo "PASS: Batch audit record found with status PROCESSED"
