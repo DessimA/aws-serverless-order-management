@@ -1,9 +1,9 @@
 import json
 import os
 import boto3
-from datetime import datetime
 import urllib.parse
 from common.sns import publish_error
+from common.utils import utcnow_iso
 
 s3_client = boto3.client('s3')
 audit_table = boto3.resource('dynamodb').Table(os.environ['DYNAMODB_TABLE'])
@@ -46,7 +46,7 @@ def lambda_handler(event, context):
                 audit_table.put_item(Item={
                     'file_name': key,
                     'status': status,
-                    'timestamp': datetime.utcnow().isoformat() + "Z",
+                    'timestamp': utcnow_iso(),
                     'details': details or "OK"
                 })
 

@@ -1,9 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def utcnow_iso():
-    return datetime.utcnow().isoformat() + "Z"
-
-
-def generate_id(prefix="ORD-"):
-    return f"{prefix}{datetime.utcnow().timestamp()}"
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

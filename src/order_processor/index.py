@@ -1,11 +1,11 @@
 import json
 import os
 import boto3
-from datetime import datetime
 from decimal import Decimal
 from botocore.exceptions import ClientError
 from common.sqs import parse_detail, parse_body
 from common.sns import publish_error
+from common.utils import utcnow_iso
 
 DYNAMODB_TABLE = os.environ['DYNAMODB_TABLE']
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
@@ -42,7 +42,7 @@ def lambda_handler(event, context):
                 'items': order_detail.get('itens', []),
                 'origin': order_detail.get('origem', 'API'),
                 'status': 'PROCESSED',
-                'processedAt': datetime.utcnow().isoformat() + "Z",
+                'processedAt': utcnow_iso(),
                 'eventTime': envelope.get('time')
             }
 

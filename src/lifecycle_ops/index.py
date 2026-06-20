@@ -1,10 +1,10 @@
 import os
 import boto3
-from datetime import datetime
 from decimal import Decimal
 from botocore.exceptions import ClientError
 from common.sqs import parse_detail
 from common.sns import publish_error
+from common.utils import utcnow_iso
 
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
 sns_client = boto3.client('sns')
@@ -50,7 +50,7 @@ def _handler(event, context, operation):
                         "SET #s = :status, updatedAt = :ts",
                         {
                             ":status": "CANCELLED",
-                            ":ts": datetime.utcnow().isoformat() + "Z",
+                            ":ts": utcnow_iso(),
                         },
                     )
                     print(f"Order {order_id} marked as CANCELLED")
@@ -65,7 +65,7 @@ def _handler(event, context, operation):
                         {
                             ":items": _to_decimal(new_items),
                             ":status": "UPDATED",
-                            ":ts": datetime.utcnow().isoformat() + "Z",
+                            ":ts": utcnow_iso(),
                         },
                         expression_attribute_names={"#i": "items"},
                     )
