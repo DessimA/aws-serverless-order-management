@@ -232,7 +232,7 @@ validate_sqs_queue() {
         fi
         echo "  OK: ContentBasedDeduplication=true"
     fi
-    echo "  OK: Fila SQS VisibilityTimeout=90"
+    echo "  OK: Fila SQS VisibilityTimeout=$VISIBILITY_TIMEOUT"
 }
 
 validate_sqs_policy() {
