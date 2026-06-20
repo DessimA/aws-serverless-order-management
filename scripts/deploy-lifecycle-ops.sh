@@ -21,8 +21,8 @@ validate_not_empty "PRODUCTION_TABLE_ARN" "$PRODUCTION_TABLE_ARN" "DynamoDB Prod
 
 deploy_lifecycle_handler() {
     local OPERATION="$1"
-    local QUEUE_NAME="${OPERATION}-order-queue-${RESOURCE_SUFFIX}.fifo"
-    local DLQ_NAME="${OPERATION}-order-dlq-${RESOURCE_SUFFIX}.fifo"
+    local QUEUE_NAME="${OPERATION}-order-queue-${RESOURCE_SUFFIX}"
+    local DLQ_NAME="${OPERATION}-order-dlq-${RESOURCE_SUFFIX}"
     local LAMBDA_NAME="order-lifecycle-${OPERATION}-${RESOURCE_SUFFIX}"
     local ROLE_NAME="order-lifecycle-${OPERATION}-role-${RESOURCE_SUFFIX}"
     local RULE_NAME="orders-${OPERATION}-${RESOURCE_SUFFIX}"
@@ -36,10 +36,10 @@ deploy_lifecycle_handler() {
 
     # ========== SQS Queues ==========
     local DLQ_ARN
-    DLQ_ARN=$(ensure_sqs_dlq "$DLQ_NAME" "$AWS_REGION" "true")
+    DLQ_ARN=$(ensure_sqs_dlq "$DLQ_NAME" "$AWS_REGION" "false")
     validate_not_empty "DLQ_ARN" "$DLQ_ARN" "Lifecycle $OPERATION DLQ ARN"
 
-    ensure_sqs_queue "$QUEUE_NAME" "$DLQ_ARN" "$AWS_REGION" "true" "true"
+    ensure_sqs_queue "$QUEUE_NAME" "$DLQ_ARN" "$AWS_REGION" "false" ""
 
     # ========== IAM ==========
     ensure_iam_lambda_role "$ROLE_NAME"
@@ -49,8 +49,8 @@ deploy_lifecycle_handler() {
 
     # ========== EventBridge Rule -> SQS ==========
     aws events put-rule --name "$RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --event-pattern "{\"source\":[\"app.orders.operations\"],\"detail-type\":[\"$DETAIL_TYPE\"]}" --region "$AWS_REGION"
-    put_eventbridge_target "$RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "order-lifecycle-${OPERATION}" "$AWS_REGION"
-    validate_eventbridge_target "$RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "$AWS_REGION"
+    put_eventbridge_target "$RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "order-lifecycle-${OPERATION}" "$AWS_REGION" "false"
+    validate_eventbridge_target "$RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "$AWS_REGION" "false"
 
     local LIFECYCLE_RULE_ARN="arn:aws:events:$AWS_REGION:$ACCOUNT_ID:rule/$EVENT_BUS_NAME/$RULE_NAME"
     aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes "{\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"events.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"$QUEUE_ARN\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"$LIFECYCLE_RULE_ARN\\\"}}}]}\"}" --region "$AWS_REGION"

@@ -16,8 +16,8 @@ if ! aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_
 fi
 ROLE_NAME="order-persister-role-$RESOURCE_SUFFIX"
 LAMBDA_NAME="order-persister-$RESOURCE_SUFFIX"
-QUEUE_NAME="order-persister-queue-$RESOURCE_SUFFIX.fifo"
-DLQ_NAME="order-persister-dlq-$RESOURCE_SUFFIX.fifo"
+QUEUE_NAME="order-persister-queue-$RESOURCE_SUFFIX"
+DLQ_NAME="order-persister-dlq-$RESOURCE_SUFFIX"
 EVENT_BUS_NAME="orders-event-bus-$RESOURCE_SUFFIX"
 TABLE_NAME="order-production-data-$RESOURCE_SUFFIX"
 EVENTBRIDGE_RULE_NAME="orders-persist-validated-$RESOURCE_SUFFIX"
@@ -37,10 +37,10 @@ validate_not_empty "PRODUCTION_TABLE_ARN" "$PRODUCTION_TABLE_ARN" "DynamoDB Tabl
 ensure_iam_lambda_role "$ROLE_NAME"
 
 # === SQS Queues ===
-DLQ_ARN=$(ensure_sqs_dlq "$DLQ_NAME" "$AWS_REGION" "true")
+DLQ_ARN=$(ensure_sqs_dlq "$DLQ_NAME" "$AWS_REGION" "false")
 validate_not_empty "DLQ_ARN" "$DLQ_ARN" "Persister DLQ ARN"
 
-ensure_sqs_queue "$QUEUE_NAME" "$DLQ_ARN" "$AWS_REGION" "true" "true"
+ensure_sqs_queue "$QUEUE_NAME" "$DLQ_ARN" "$AWS_REGION" "false" ""
 
 # Inline policy (must be after QUEUE_ARN is resolved)
 SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:order-notifications-$RESOURCE_SUFFIX" --query Attributes.TopicArn --output text --region "$AWS_REGION" 2>/dev/null || echo "")
@@ -48,8 +48,8 @@ aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "OrderProductionD
 
 # === EventBridge Rule -> SQS ===
 aws events put-rule --name "$EVENTBRIDGE_RULE_NAME" --event-bus-name "$EVENT_BUS_NAME" --event-pattern '{"source":["app.orders.validation"],"detail-type":["OrderValidated"]}' --region "$AWS_REGION"
-put_eventbridge_target "$EVENTBRIDGE_RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "order-persister" "$AWS_REGION"
-validate_eventbridge_target "$EVENTBRIDGE_RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "$AWS_REGION"
+put_eventbridge_target "$EVENTBRIDGE_RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "order-persister" "$AWS_REGION" "false"
+validate_eventbridge_target "$EVENTBRIDGE_RULE_NAME" "$EVENT_BUS_NAME" "$QUEUE_ARN" "$AWS_REGION" "false"
 
 # SqS Queue Policy for EventBridge
 RULE_ARN="arn:aws:events:$AWS_REGION:$ACCOUNT_ID:rule/$EVENT_BUS_NAME/$EVENTBRIDGE_RULE_NAME"
