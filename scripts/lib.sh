@@ -280,6 +280,7 @@ validate_eventbridge_target() {
     local event_bus_name="$2"
     local expected_arn="$3"
     local region="$4"
+    local is_fifo="${5:-true}"
     echo "[VALIDACAO] Verificando target da rule EventBridge $rule_name..."
     local targets
     targets=$(aws events list-targets-by-rule --rule "$rule_name" --event-bus-name "$event_bus_name" --region "$region" 2>&1) || {
@@ -298,13 +299,17 @@ validate_eventbridge_target() {
         echo "ERRO [VALIDACAO]: Target ARN ($target_arn) difere do esperado ($expected_arn)"
         exit 1
     fi
-    local msg_group_id
-    msg_group_id=$(echo "$targets" | jq -r '.Targets[0].SqsParameters.MessageGroupId // empty')
-    if [ -z "$msg_group_id" ]; then
-        echo "ERRO [VALIDACAO]: Target sem SqsParameters.MessageGroupId (obrigatorio para FIFO)"
-        exit 1
+    if [ "$is_fifo" == "true" ]; then
+        local msg_group_id
+        msg_group_id=$(echo "$targets" | jq -r '.Targets[0].SqsParameters.MessageGroupId // empty')
+        if [ -z "$msg_group_id" ]; then
+            echo "ERRO [VALIDACAO]: Target sem SqsParameters.MessageGroupId (obrigatorio para FIFO)"
+            exit 1
+        fi
+        echo "  OK: Rule $rule_name -> $target_arn (MessageGroupId=$msg_group_id)"
+    else
+        echo "  OK: Rule $rule_name -> $target_arn (Standard queue, no MessageGroupId)"
     fi
-    echo "  OK: Rule $rule_name -> $target_arn (MessageGroupId=$msg_group_id)"
 }
 
 validate_esm() {
@@ -450,9 +455,11 @@ put_eventbridge_target() {
     local queue_arn="$3"
     local message_group_id="$4"
     local region="$5"
+    local is_fifo="${6:-true}"
     local tmpfile
     tmpfile=$(mktemp)
-    cat > "$tmpfile" << EOF
+    if [ "$is_fifo" == "true" ]; then
+        cat > "$tmpfile" << EOF
 [
   {
     "Id": "1",
@@ -463,6 +470,16 @@ put_eventbridge_target() {
   }
 ]
 EOF
+    else
+        cat > "$tmpfile" << EOF
+[
+  {
+    "Id": "1",
+    "Arn": "$queue_arn"
+  }
+]
+EOF
+    fi
     aws events put-targets --rule "$rule_name" --event-bus-name "$event_bus_name" --targets "file://${tmpfile}" --region "$region"
     rm -f "$tmpfile"
 }
