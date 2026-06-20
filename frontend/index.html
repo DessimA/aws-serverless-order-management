@@ -128,6 +128,22 @@
                         </div>
                     </div>
 
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#consultErrors">
+                            <span class="material-icons fs-6 align-text-bottom me-1">bug_report</span>
+                            Cenarios de Erro
+                        </button>
+                    </div>
+
+                    <div class="collapse mb-3" id="consultErrors">
+                        <div class="card card-body border-secondary bg-body-tertiary py-2">
+                            <p class="small text-secondary mb-2">Teste a consulta de um pedido que nao existe.</p>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button class="btn btn-outline-danger btn-sm" data-action="testRead" data-scenario="nonexistent">Pedido Inexistente</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card border-secondary bg-transparent" id="result-consult"></div>
 
                     <div class="d-none mt-3" id="consult-actions">
@@ -184,6 +200,7 @@
                             <div class="d-flex flex-wrap gap-2">
                                 <button class="btn btn-outline-danger btn-sm" data-action="testLifecycle" data-scenario="cancel-nonexistent">Cancelar Inexistente</button>
                                 <button class="btn btn-outline-danger btn-sm" data-action="testLifecycle" data-scenario="update-nonexistent">Atualizar Inexistente</button>
+                                <button class="btn btn-outline-warning btn-sm" data-action="testCancelledUpdate">Atualizar Pedido Cancelado</button>
                             </div>
                         </div>
                     </div>
