@@ -8,6 +8,12 @@ load_env "$SCRIPT_DIR/../.env"
 validate_env "AWS_REGION" "RESOURCE_SUFFIX"
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+SNS_TOPIC_NAME="order-notifications-$RESOURCE_SUFFIX"
+if ! aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+    echo "ERRO: SNS topic $SNS_TOPIC_NAME not found. Deploy deploy-api-flow.sh first."
+    exit 1
+fi
 EVENT_BUS_NAME="orders-event-bus-$RESOURCE_SUFFIX"
 TABLE_NAME="order-production-data-$RESOURCE_SUFFIX"
 PRODUCTION_TABLE_ARN=$(aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$AWS_REGION" --query Table.TableArn --output text)
