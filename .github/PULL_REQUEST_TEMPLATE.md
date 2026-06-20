@@ -21,7 +21,6 @@ Describe the tests you ran and their results.
 ## Checklist
 
 - [ ] Shell scripts use `set -euo pipefail`
-- [ ] `set -euo pipefail` is present where required
 - [ ] Resources are idempotent (check existence before creating)
 - [ ] Validations are added after each resource creation
 - [ ] Variables are sourced from `.env` via `load_env`
