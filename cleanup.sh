@@ -54,6 +54,7 @@ for name in "order-persister-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-${RESOU
         aws lambda delete-function --function-name "$name" --region "$AWS_REGION" || true
         echo "Lambda deleted: $name"
     fi
+    aws logs delete-log-group --log-group-name "/aws/lambda/$name" --region "$AWS_REGION" 2>/dev/null || true
 done
 
 # === IAM Roles ===
@@ -74,15 +75,21 @@ for suffix in "order-pre-validator-role-${RESOURCE_SUFFIX}" "order-validator-rol
 done
 
 # === SQS Queues ===
-for name in "order-persister-queue" "order-persister-dlq" "order-validation-buffer" "order-validation-dlq" "order-s3-batch-queue" "order-s3-batch-dlq" "cancel-order-queue" "cancel-order-dlq" "update-order-queue" "update-order-dlq"; do
-    for suffix in "" ".fifo"; do
-        QUEUE_NAME="${name}-${RESOURCE_SUFFIX}${suffix}"
-        QUEUE_URL=$(aws sqs get-queue-url --queue-name "$QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text 2>/dev/null || true)
-        if [ -n "$QUEUE_URL" ] && [ "$QUEUE_URL" != "None" ]; then
-            aws sqs delete-queue --queue-url "$QUEUE_URL" --region "$AWS_REGION" 2>/dev/null || true
-            echo "SQS queue deleted: $QUEUE_NAME"
-        fi
-    done
+# Standard queues
+for name in "order-persister-queue-${RESOURCE_SUFFIX}" "order-persister-dlq-${RESOURCE_SUFFIX}" "order-s3-batch-queue-${RESOURCE_SUFFIX}" "order-s3-batch-dlq-${RESOURCE_SUFFIX}" "cancel-order-queue-${RESOURCE_SUFFIX}" "cancel-order-dlq-${RESOURCE_SUFFIX}" "update-order-queue-${RESOURCE_SUFFIX}" "update-order-dlq-${RESOURCE_SUFFIX}"; do
+    QUEUE_URL=$(aws sqs get-queue-url --queue-name "$name" --region "$AWS_REGION" --query QueueUrl --output text 2>/dev/null || true)
+    if [ -n "$QUEUE_URL" ] && [ "$QUEUE_URL" != "None" ]; then
+        aws sqs delete-queue --queue-url "$QUEUE_URL" --region "$AWS_REGION" 2>/dev/null || true
+        echo "SQS queue deleted: $name"
+    fi
+done
+# FIFO queues (retain .fifo suffix)
+for name in "order-validation-buffer-${RESOURCE_SUFFIX}.fifo" "order-validation-dlq-${RESOURCE_SUFFIX}.fifo"; do
+    QUEUE_URL=$(aws sqs get-queue-url --queue-name "$name" --region "$AWS_REGION" --query QueueUrl --output text 2>/dev/null || true)
+    if [ -n "$QUEUE_URL" ] && [ "$QUEUE_URL" != "None" ]; then
+        aws sqs delete-queue --queue-url "$QUEUE_URL" --region "$AWS_REGION" 2>/dev/null || true
+        echo "SQS queue deleted: $name"
+    fi
 done
 
 # === DynamoDB Tables ===
