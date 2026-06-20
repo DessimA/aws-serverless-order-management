@@ -28,7 +28,7 @@ def _process(order_id, update_expression, expression_values):
     production_table.update_item(
         Key={"orderId": str(order_id)},
         UpdateExpression=update_expression,
-        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeNames={"#s": "status", "#i": "items"},
         ExpressionAttributeValues=expression_values,
         ConditionExpression="attribute_exists(orderId)",
     )
