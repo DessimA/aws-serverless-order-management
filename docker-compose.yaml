@@ -3,20 +3,13 @@ services:
     image: localstack/localstack:latest
     container_name: localstack_students
     ports:
-      - "4566:4566"            # Gateway principal
-      - "4510-4559:4510-4559"  # Range de portas para serviços internos (Pro)
+      - "4566:4566"
+      - "4510-4559:4510-4559"
     environment:
-      # Puxa o token do arquivo .env automaticamente
       - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
-      
-      # Corrige o bloqueio de conexão do app.localstack.cloud (CORS)
       - EXTRA_CORS_ALLOWED_ORIGINS=https://app.localstack.cloud
-      
-      # Força o gateway a escutar em todas as interfaces de rede no WSL/Docker
       - GATEWAY_LISTEN=0.0.0.0:4566
-      
-      # Ativa logs detalhados para diagnóstico, se necessário
       - DEBUG=1
+      - ENFORCE_IAM=1
     volumes:
-      # Essencial para execução de Lambdas e isolamento de contêineres
       - "/var/run/docker.sock:/var/run/docker.sock"
