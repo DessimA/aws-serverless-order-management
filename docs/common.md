@@ -22,7 +22,7 @@ Utilitarios gerais (quando aplicavel).
 
 O padrao de modulo compartilhado (`common/`) foi adotado porque:
 
-1. Seis das oito Lambdas precisam de logica de resposta HTTP e/ou publicacao SNS.
+1. Todas as oito Lambdas dependem de common.http e/ou common.sns.
 2. Antes da centralizacao, cada Lambda reimplementava headers CORS com pequenas variacoes, dificultando manutencao.
 3. A funcao `parse_detail` corrige um bug critico onde `json.loads()` era chamado em um objeto dict, causando `TypeError`.
 4. O custo de incluir o diretorio `common/` em todos os zips de deploy e minimo (~1KB) comparado ao ganho de consistencia.

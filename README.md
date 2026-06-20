@@ -81,11 +81,11 @@ A Lambda `order_validator` consome a fila FIFO, publica o pedido validado no **A
 - **Ordenação:** Pedidos são processados na ordem de chegada (MessageGroupId = pedidoId).
 - **Deduplicação:** A identificação única de cada mensagem SQS é garantida por um UUID gerado no momento do envio, permitindo que reenvios do mesmo pedidoId cheguem até a camada de persistência. A duplicidade de negócio é tratada pelo `ConditionExpression: attribute_not_exists(orderId)` no DynamoDB, com alerta SNS em caso de duplicata.
 
-### 4.2. Camada de Ingestão Assíncrona (S3 — Audit-Only)
+### 4.2. Camada de Ingestão Assíncrona (S3, Somente Auditoria)
 Projetada para integração com sistemas legados ou parceiros que exportam arquivos. Quando um arquivo JSON é carregado no **Amazon S3**, uma notificação de evento é enviada para uma fila **SQS Standard**. A Lambda `file_validator` (anteriormente `batch_processor`) consome esta fila, baixa o arquivo e valida o schema (presença da chave `lista_pedidos`).
 *   **Auditoria:** Cada arquivo processado tem seu status (PROCESSED ou ERROR) registrado na tabela DynamoDB de auditoria.
 *   **Alertas:** Em caso de falha no schema do arquivo, um alerta é disparado via **Amazon SNS**.
-*   **Nota:** Diferente de versões anteriores, este fluxo **não** publica eventos no EventBridge. Pedidos em lote são apenas validados e auditados — não criam registros na tabela de produção.
+*   **Nota:** Diferente de versões anteriores, este fluxo **não** publica eventos no EventBridge. Pedidos em lote são apenas validados e auditados, não criam registros na tabela de produção.
 
 ### 4.3. Barramento de Eventos (EventBridge)
 Atua como o sistema nervoso central da arquitetura. Ele recebe eventos exclusivamente da Lambda `order_validator` (fluxo API síncrono). Através de **Regras (Rules)** baseadas em padrões de eventos (`source` e `detail-type`), o EventBridge roteia os dados para as filas SQS FIFO específicas de cada operação (Criação, Alteração ou Cancelamento).
@@ -217,7 +217,7 @@ chmod +x run.sh
 7.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
 
 ### Utilitários (scripts/lib.sh)
-Os scripts de deploy compartilham 19 funções utilitárias:
+Os scripts de deploy compartilham 22 funções utilitárias:
 
 | Função | Descrição |
 |--------|-----------|
@@ -229,7 +229,7 @@ Os scripts de deploy compartilham 19 funções utilitárias:
 | `sns_subscribe_email` | Inscreve e-mail no tópico SNS de forma idempotente |
 | `validate_not_empty` | Valida que ARN/ID não está vazio ou `None` |
 | `validate_lambda_config` | Valida timeout (60s) e variáveis de ambiente da Lambda |
-| `validate_sqs_queue` | Valida VisibilityTimeout=90 e ContentBasedDeduplication (se FIFO) |
+| `validate_sqs_queue` | Valida VisibilityTimeout=$VISIBILITY_TIMEOUT (padrao 360s) e ContentBasedDeduplication (se FIFO) |
 | `validate_sqs_policy` | Valida política resource-based da fila SQS |
 | `validate_eventbridge_target` | Valida target da regra EventBridge (ARN + MessageGroupId) |
 | `validate_esm` | Valida event source mapping SQS → Lambda (UUID + estado Enabled) |
@@ -240,6 +240,9 @@ Os scripts de deploy compartilham 19 funções utilitárias:
 | `ensure_lambda_function` | Deploy Lambda com create/update, env vars e timeout |
 | `ensure_event_source_mapping` | Cria ou ignora event source mapping SQS → Lambda |
 | `setup_api_cors` | Configura OPTIONS + CORS completo em recurso do API Gateway |
+| `validate_resource_suffix` | Valida formato do RESOURCE_SUFFIX (apenas [a-z0-9-], max 20 char) |
+| `get_endpoint_url` | Monta URL do API Gateway ou S3 website conforme ambiente (AWS ou LocalStack) |
+| `poll_resource` | Polling generico com timeout configuravel para aguardar recursos ficarem prontos |
 
 ---
 

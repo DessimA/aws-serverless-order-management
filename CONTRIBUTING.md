@@ -18,7 +18,7 @@ Thanks for your interest in contributing to this project.
 ## Project Structure
 
 ```
-├── scripts/        # IaC — AWS CLI shell scripts (deploy, cleanup, validate)
+├── scripts/        # IaC via AWS CLI shell scripts (deploy, cleanup, validate)
 ├── src/            # Lambda functions (Python 3.12, one directory per function)
 ├── frontend/       # S3 static website dashboard (HTML, CSS, JS)
 ├── samples/        # Example payload files
