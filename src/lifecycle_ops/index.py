@@ -21,14 +21,17 @@ def _to_decimal(obj):
     return obj
 
 
-def _process(order_id, update_expression, expression_values):
+def _process(order_id, update_expression, expression_values, expression_attribute_names=None):
     if not order_id:
         print("Skipping record with missing pedidoId")
         return
+    names = {"#s": "status"}
+    if expression_attribute_names:
+        names.update(expression_attribute_names)
     production_table.update_item(
         Key={"orderId": str(order_id)},
         UpdateExpression=update_expression,
-        ExpressionAttributeNames={"#s": "status", "#i": "items"},
+        ExpressionAttributeNames=names,
         ExpressionAttributeValues=expression_values,
         ConditionExpression="attribute_exists(orderId)",
     )
@@ -64,6 +67,7 @@ def _handler(event, context, operation):
                             ":status": "UPDATED",
                             ":ts": datetime.utcnow().isoformat() + "Z",
                         },
+                        expression_attribute_names={"#i": "items"},
                     )
                     print(f"Order {order_id} updated with new items")
                 else:
