@@ -358,3 +358,185 @@ flowchart TD
 **Justificativa:** Padrao ja usado em `scripts/deploy-frontend.sh` para verificacao de dependencias (tabela DynamoDB, EventBus). Falha cedo com mensagem acionavel.
 
 ---
+
+## Rodada 4
+
+### 1. [CRITICO] Status CANCELLED nao tratado como estado terminal
+
+**Localizacao:** `src/lifecycle_ops/index.py`
+
+**Problema:** update_handler usava `ConditionExpression="attribute_exists(orderId)"` sem verificar status. Pedido CANCELLED podia ser atualizado para UPDATED, revertendo cancelamento.
+
+**Correcao:** Adicionado parametro `extra_condition` em `_process()`. A operacao de update passa `#s <> :cancelledStatus` como condicao extra, com `:cancelledStatus = "CANCELLED"` nos valores. Mensagem SNS ajustada para "Order does not exist or is already cancelled". Cancelamento permanece idempotente.
+
+**Justificativa:** CANCELLED deve ser terminal. A idempotencia do DynamoDB por si so nao impoe restricao de estado.
+
+**Validacao:**
+- Teste 4b em `scripts/validate-flow.sh`: cancela pedido, tenta atualizar, verifica que status continua CANCELLED.
+- Cenario "Atualizar Pedido Cancelado" no frontend (aba Gerenciar, Cenarios de Erro).
+- `docs/lifecycle_status.md`: diagrama Mermaid stateDiagram.
+
+---
+
+### 2. [IMPORTANTE] Cenario "Inexistente" do frontend usava ID do campo
+
+**Localizacao:** `frontend/app.js`, funcao `buildManagePayload`
+
+**Problema:** ignorava o parametro `scenario` e usava o valor do campo `lifecycleOrderId`, que podia conter um pedido real.
+
+**Correcao:** Quando `scenario` contem `"nonexistent"`, `buildManagePayload` sempre gera um novo ID via `generateId('ORD-NONEXISTENT-')`, ignorando o campo.
+
+**Justificativa:** Cenario de erro deve operar sobre ID garantidamente inexistente, nao sobre o valor do campo.
+
+**Validacao:** Botao "Cancelar Inexistente" ou "Atualizar Inexistent" sempre gera ID novo, mesmo com pedido real no campo.
+
+---
+
+### 3. [IMPORTANTE] Aba Consultar sem cenario de pedido inexistente
+
+**Localizacao:** `frontend/index.html`, `frontend/app.js`
+
+**Problema:** Todas as demais abas tinham collapsible "Cenarios de Erro", mas Consultar nao, apesar do README secoes 13.1 listar Pedido Inexistente como cenario esperado.
+
+**Correcao:** Adicionado collapsible "Cenarios de Erro" na aba Consultar com botao "Pedido Inexistente". O cenario `nonexistent` em `testRead()` sempre gera um ID novo via `generateId('ORD-NONEXISTENT-')`.
+
+**Justificativa:** Consistencia com as demais abas e com o README.
+
+**Validacao:** Clicar em "Pedido Inexistente" sempre retorna 404, independente do campo `readOrderId` ou `lastOrderId`.
+
+---
+
+### 4. [IMPORTANTE] MessageGroupId estatico serializava filas de processamento
+
+**Arquivos:** `scripts/lib.sh`, `scripts/deploy-order-processor.sh`, `scripts/deploy-lifecycle-ops.sh`, `cleanup.sh`, `README.md`
+
+**Problema:** Filas `order-persister-queue`, `cancel-order-queue` e `update-order-queue` eram FIFO com `MessageGroupId` estatico, forçando processamento sequencial sem ganho de correcao (a idempotencia ja e garantida pelo DynamoDB).
+
+**Correcao:**
+- Convertidas para Standard SQS (removido `.fifo` dos nomes e `FifoQueue` dos atributos).
+- `put_eventbridge_target` e `validate_eventbridge_target` em `lib.sh` agora aceitam 6o parametro `is_fifo` (padrao `true`). Para filas Standard, omitem `SqsParameters.MessageGroupId` e nao validam sua presenca.
+- Chamadas nos scripts de deploy passam `"false"` para as tres filas convertidas.
+- `cleanup.sh`: separado em loop para Standard (sem sufixo) e FIFO (com `.fifo`).
+- `README.md` secoes 4.3 e 4.4 atualizadas (removidas referencias a FIFO para essas filas).
+
+**Justificativa:** Elimina gargalo de paralelismo desnecessario. A correcao do sistema (idempotencia via ConditionExpression) independe da ordenacao SQS.
+
+**Fluxo antes vs depois:**
+
+```mermaid
+sequenceDiagram
+    participant EB as EventBridge
+    participant FIFO as SQS FIFO (antes)
+    participant Std as SQS Standard (depois)
+    participant L1 as Lambda ordem 1
+    participant L2 as Lambda ordem 2
+
+    rect rgb(200, 100, 100)
+    Note over EB,Std: ANTES (FIFO com MessageGroupId estatico)
+    EB->>FIFO: Evento 1 (pedido A)
+    EB->>FIFO: Evento 2 (pedido B)
+    Note over FIFO: Processamento sequencial
+    FIFO->>L1: Mensagem 1 (pedido A)
+    Note over L1: Processa A
+    L1->>FIFO: Delete
+    FIFO->>L2: Mensagem 2 (pedido B)
+    Note over L2: Processa B
+    end
+
+    rect rgb(100, 200, 100)
+    Note over EB,Std: DEPOIS (Standard, paralelo)
+    EB->>Std: Evento 1 (pedido A)
+    EB->>Std: Evento 2 (pedido B)
+    Note over Std: Processamento paralelo
+    Std->>L1: Mensagem 1 (pedido A)
+    Std->>L2: Mensagem 2 (pedido B)
+    Note over L1: Processa A (paralelo)
+    Note over L2: Processa B (paralelo)
+    end
+```
+
+---
+
+### 5. [IMPORTANTE] CONTRIBUTING.md instruia json.loads direto em detail
+
+**Localizacao:** `CONTRIBUTING.md`
+
+**Problema:** Instruia `json.loads(event['detail'])`, que falha com TypeError quando detail chega como dict nativo.
+
+**Correcao:** Substituido por orientacao de usar `common.sqs.parse_body()` e `common.sqs.parse_detail()`, com referencia a `docs/common.md`.
+
+**Justificativa:** Reintroduziria o bug corrigido na Rodada 1/2 se seguido literalmente.
+
+---
+
+### 6. [IMPORTANTE] .env.example apontava para AWS real
+
+**Localizacao:** `.env.example`
+
+**Problema:** `DEPLOY_TARGET=aws` como padrao. Novo contribuidor copiando sem alterar implantaria em conta real.
+
+**Correcao:** Alterado para `DEPLOY_TARGET=localstack`.
+
+**Justificativa:** Fluxo de desenvolvimento e LocalStack-first conforme README e CONTRIBUTING.
+
+---
+
+### 7. [MEDIO] README contradizia exclusividade do EventBridge
+
+**Localizacao:** `README.md`, secao 4.3
+
+**Problema:** Afirmava "recebe eventos exclusivamente da Lambda order_validator", contradito pela secao 4.6 (test_controller).
+
+**Correcao:** Substituido "exclusivamente" por descricao que inclui ambas as fontes.
+
+**Justificativa:** Consistencia interna do README.
+
+---
+
+### 8. [MENOR] docs/read_order.md descrevia OPTIONS inexistente
+
+**Localizacao:** `docs/read_order.md`
+
+**Problema:** "Trata requisicoes OPTIONS (CORS) diretamente", mas a Lambda nao tem tratamento de OPTIONS.
+
+**Correcao:** Descricao atualizada para "Requisicoes OPTIONS sao tratadas pela integracao MOCK do API Gateway (setup_api_cors) antes de chegar a Lambda."
+
+**Justificativa:** Alinhamento com o codigo real.
+
+---
+
+### 9. [MENOR] Nome de deploy do order_processor nao documentado
+
+**Localizacao:** `README.md`, secao 4.4
+
+**Problema:** batch_processor tinha nota explicando ser implantado como file_validator, mas order_processor nao explicitava ser implantado como order-persister.
+
+**Correcao:** Adicionado "(implantado como `order-persister-*`)" na descricao do Order Processor.
+
+**Justificativa:** Consistencia com a nota ja existente para batch_processor/file_validator.
+
+---
+
+### 10. [MENOR] Variavel nao utilizada em validate-flow.sh
+
+**Localizacao:** `scripts/validate-flow.sh:84`
+
+**Problema:** `DUP_ITEMS` era calculada mas nunca utilizada.
+
+**Correcao:** Linha removida.
+
+**Justificativa:** Codigo morto.
+
+---
+
+### 11. [MENOR] cleanup.sh nao removia log groups do CloudWatch
+
+**Localizacao:** `cleanup.sh`
+
+**Problema:** Log groups `/aws/lambda/<nome>` acumulavam-se apos cada deploy.
+
+**Correcao:** Adicionado `aws logs delete-log-group --log-group-name "/aws/lambda/$name"` no laco de exclusao de Lambdas, com `2>/dev/null || true`.
+
+**Justificativa:** Cleanup completo seguindo padrao idempotente ja usado no restante do script.
+
+---
