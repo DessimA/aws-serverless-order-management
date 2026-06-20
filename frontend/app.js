@@ -270,9 +270,11 @@ async function testAPI(scenario) {
 }
 
 async function testRead(scenario) {
-    const orderId = scenario === 'last'
-        ? (lastOrderId || 'ORD-TEST-001')
-        : (document.getElementById('readOrderId').value.trim() || lastOrderId || 'ORD-TEST-001');
+    const orderId = scenario === 'nonexistent'
+        ? generateId('ORD-NONEXISTENT-')
+        : (scenario === 'last'
+            ? (lastOrderId || 'ORD-TEST-001')
+            : (document.getElementById('readOrderId').value.trim() || lastOrderId || 'ORD-TEST-001'));
     const label = 'Consultar: ' + orderId;
 
     log('warn', label, 'Buscando pedido...');
@@ -291,7 +293,9 @@ async function testRead(scenario) {
 }
 
 function buildManagePayload(scenario) {
-    const orderId = document.getElementById('lifecycleOrderId').value.trim() || generateId('ORD-NONEXISTENT-');
+    const orderId = scenario.includes('nonexistent')
+        ? generateId('ORD-NONEXISTENT-')
+        : (document.getElementById('lifecycleOrderId').value.trim() || generateId('ORD-NONEXISTENT-'));
     const produto = document.getElementById('mgmtProduto').value.trim() || 'Curso Azure';
     const qtd = parseInt(document.getElementById('mgmtQtd').value, 10) || 3;
     const preco = parseFloat(document.getElementById('mgmtPreco').value) || 199.90;
@@ -321,6 +325,34 @@ async function testLifecycle(scenario) {
     const type = res.status < 400 ? 'pass' : 'fail';
     showInlineResult('manage', type, label, res.data, { 'Order ID': mgmt.orderId });
     logResponse(type, label, res);
+}
+
+async function testCancelledUpdate() {
+    const orderId = document.getElementById('lifecycleOrderId').value.trim() || generateId('ORD-NONEXISTENT-');
+    const label = 'Gerenciar: Atualizar Pedido Cancelado (' + orderId + ')';
+    const tab = 'manage';
+
+    log('warn', label, '1/2: Cancelando pedido...');
+    let res = await apiFetch(TEST_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'publish_event', detailType: 'OrderCancelled', detail: { pedidoId: orderId } }),
+    });
+    logResponse(res.status < 400 ? 'pass' : 'fail', label + ' (cancel)', res);
+
+    await new Promise(r => setTimeout(r, 2000));
+
+    log('warn', label, '2/2: Tentando atualizar pedido cancelado...');
+    const mgmt = { orderId, novosItens: [{ sku: 'SHOULD-NOT-APPEAR', qtd: 999, preco: 1.0 }] };
+    res = await apiFetch(TEST_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'publish_event', detailType: 'OrderUpdated', detail: mgmt }),
+    });
+    logResponse(res.status < 400 ? 'pass' : 'fail', label + ' (update)', res);
+
+    const type = res.status < 400 ? 'warn' : 'fail';
+    showInlineResult(tab, type, label, res.data, { 'Order ID': orderId });
 }
 
 async function testS3(scenario) {
