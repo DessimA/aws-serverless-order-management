@@ -392,7 +392,8 @@ ensure_lambda_function() {
     local zip_file="$4"
     local region="$5"
     local account_id="$6"
-    shift 6
+    local reserved_concurrency="${7:-}"
+    shift 7
     local env_vars="$*"
     if ! aws lambda get-function --function-name "$lambda_name" --region "$region" >/dev/null 2>&1; then
         echo "Criando funcao Lambda $lambda_name..."
@@ -407,6 +408,11 @@ ensure_lambda_function() {
     if [ -n "$env_vars" ]; then
         aws lambda update-function-configuration --function-name "$lambda_name" --timeout 60 --environment "Variables={$env_vars}" --region "$region"
     fi
+    if [ -n "$reserved_concurrency" ]; then
+        aws lambda put-function-concurrency --function-name "$lambda_name" --reserved-concurrent-executions "$reserved_concurrency" --region "$region"
+    fi
+    aws logs create-log-group --log-group-name "/aws/lambda/$lambda_name" --region "$region" 2>/dev/null || true
+    aws logs put-retention-policy --log-group-name "/aws/lambda/$lambda_name" --retention-in-days 14 --region "$region" 2>/dev/null || true
 }
 
 ensure_event_source_mapping() {
@@ -447,6 +453,150 @@ setup_api_cors() {
         --request-templates '{"application/json":"{\"statusCode\":200}"}' --region "$region"
     aws apigateway get-integration-response --rest-api-id "$rest_api_id" --resource-id "$resource_id" --http-method OPTIONS --status-code 200 --region "$region" >/dev/null 2>&1 || \
     put_integration_response_cors "$rest_api_id" "$resource_id" "$region"
+}
+
+ensure_api_resource_policy() {
+    local rest_api_id="$1"
+    local region="$2"
+    local allowed_ip="${ALLOWED_SOURCE_IP:-}"
+
+    if [ -z "$allowed_ip" ]; then
+        echo "ALLOWED_SOURCE_IP vazio: nenhuma politica de recurso aplicada."
+        return 0
+    fi
+
+    echo "Aplicando Resource Policy no REST API $rest_api_id (IP permitido: $allowed_ip)..."
+    local policy
+    policy=$(cat << EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "execute-api:Invoke",
+            "Resource": "arn:aws:execute-api:$region:*:$rest_api_id/*",
+            "Condition": {
+                "IpAddress": {
+                    "aws:SourceIp": "$allowed_ip"
+                }
+            }
+        }
+    ]
+}
+EOF
+)
+    aws apigateway update-rest-api --rest-api-id "$rest_api_id" \
+        --patch-operations "op=replace,path=/policy,value=$(echo "$policy" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))')" \
+        --region "$region" >/dev/null 2>&1 || echo "AVISO: Nao foi possivel aplicar Resource Policy (pode ser necessario permissao adicional)."
+    echo "Resource Policy aplicada: apenas IP $allowed_ip pode invocar a API."
+}
+
+ensure_dlq_alarm() {
+    local alarm_name="$1"
+    local dlq_name="$2"
+    local sns_topic_arn="$3"
+    local region="$4"
+
+    if [ -z "$sns_topic_arn" ]; then
+        echo "AVISO: SNS_TOPIC_ARN vazio, pulando criacao do alarme $alarm_name"
+        return 0
+    fi
+
+    echo "Criando/atualizando CloudWatch Alarm $alarm_name para DLQ $dlq_name..."
+    local dlq_url
+    dlq_url=$(aws sqs get-queue-url --queue-name "$dlq_name" --region "$region" --query QueueUrl --output text 2>/dev/null || echo "")
+    if [ -z "$dlq_url" ]; then
+        echo "AVISO: DLQ $dlq_name nao encontrada, pulando alarme."
+        return 0
+    fi
+
+    local dlq_arn
+    dlq_arn=$(aws sqs get-queue-attributes --queue-url "$dlq_url" --attribute-names QueueArn --query Attributes.QueueArn --output text --region "$region")
+
+    aws cloudwatch put-metric-alarm \
+        --alarm-name "$alarm_name" \
+        --alarm-description "Alerta: mensagens na DLQ $dlq_name" \
+        --metric-name ApproximateNumberOfMessagesVisible \
+        --namespace AWS/SQS \
+        --statistic Sum \
+        --period 300 \
+        --threshold 1 \
+        --comparison-operator GreaterThanOrEqualToThreshold \
+        --evaluation-periods 1 \
+        --dimensions Name=QueueName,Value="$dlq_name" \
+        --alarm-actions "$sns_topic_arn" \
+        --region "$region"
+
+    echo "Alarme $alarm_name configurado para DLQ $dlq_name com acao SNS $sns_topic_arn"
+}
+
+ensure_usage_plan_with_api_key() {
+    local rest_api_id="$1"
+    local region="$2"
+    local api_key_file="$SCRIPT_DIR/.api-key"
+
+    local usage_plan_name="order-ingestion-usage-plan-${RESOURCE_SUFFIX}"
+    local api_key_name="order-ingestion-api-key-${RESOURCE_SUFFIX}"
+
+    echo "Verificando Usage Plan $usage_plan_name..."
+    local usage_plan_id
+    usage_plan_id=$(aws apigateway get-usage-plans --region "$region" --query "items[?name=='$usage_plan_name'].id" --output text)
+
+    if [ -z "$usage_plan_id" ] || [ "$usage_plan_id" == "None" ]; then
+        echo "Criando Usage Plan $usage_plan_name..."
+        usage_plan_id=$(aws apigateway create-usage-plan \
+            --name "$usage_plan_name" \
+            --api-stages "[{\"apiId\":\"$rest_api_id\",\"stage\":\"prod\"}]" \
+            --throttle "{\"rateLimit\":5,\"burstLimit\":10}" \
+            --quota "{\"limit\":1000,\"period\":\"DAY\"}" \
+            --region "$region" --query id --output text)
+    else
+        echo "Usage Plan $usage_plan_name ja existe (ID: $usage_plan_id). Atualizando..."
+        aws apigateway update-usage-plan \
+            --usage-plan-id "$usage_plan_id" \
+            --patch-operations "op=replace,path=/apiStages,value=[{\"apiId\":\"$rest_api_id\",\"stage\":\"prod\"}]" \
+            --region "$region" >/dev/null 2>&1 || true
+    fi
+
+    local api_key_id
+    api_key_id=$(aws apigateway get-api-keys --region "$region" --query "items[?name=='$api_key_name'].id" --output text)
+
+    if [ -z "$api_key_id" ] || [ "$api_key_id" == "None" ]; then
+        echo "Criando API Key $api_key_name..."
+        local api_key_result
+        api_key_result=$(aws apigateway create-api-key --name "$api_key_name" --enabled --output json --region "$region")
+        api_key_id=$(echo "$api_key_result" | jq -r '.id')
+        local api_key_value
+        api_key_value=$(echo "$api_key_result" | jq -r '.value')
+        echo "$api_key_value" > "$api_key_file"
+        echo "API Key salva em $api_key_file"
+    else
+        echo "API Key $api_key_name ja existe (ID: $api_key_id)."
+        if [ -f "$api_key_file" ]; then
+            echo "Usando API Key do arquivo $api_key_file"
+        else
+            echo "AVISO: API Key existe mas arquivo $api_key_file nao encontrado. Regenerando..."
+            local api_key_value
+            api_key_value=$(aws apigateway create-api-key --name "$api_key_name" --enabled --output json --region "$region")
+            api_key_id=$(echo "$api_key_value" | jq -r '.id')
+            api_key_value=$(echo "$api_key_value" | jq -r '.value')
+            echo "$api_key_value" > "$api_key_file"
+        fi
+    fi
+
+    local usage_plan_keys
+    usage_plan_keys=$(aws apigateway get-usage-plan-keys --usage-plan-id "$usage_plan_id" --region "$region" --query "items[?id=='$api_key_id'].id" --output text)
+    if [ -z "$usage_plan_keys" ] || [ "$usage_plan_keys" == "None" ]; then
+        echo "Associando API Key ao Usage Plan..."
+        aws apigateway create-usage-plan-key --usage-plan-id "$usage_plan_id" --key-type "API_KEY" --key-id "$api_key_id" --region "$region"
+    fi
+
+    if [ -f "$api_key_file" ]; then
+        local saved_key
+        saved_key=$(cat "$api_key_file")
+        echo "API Key para /test: $saved_key"
+    fi
 }
 
 put_eventbridge_target() {
