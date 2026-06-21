@@ -33,9 +33,9 @@ flowchart LR
     end
 
     subgraph "Operacoes de Ciclo de Vida"
-        J -- "Rule" --> M["SQS FIFO (Pedidos Pendentes)"] -- "Trigger" --> N{"Order Processor"}
-        J -- "Rule" --> O["SQS FIFO (Cancelar Pedido)"] -- "Trigger" --> P{"Cancel Processor"}
-        J -- "Rule" --> Q["SQS FIFO (Alterar Pedido)"] -- "Trigger" --> R{"Update Processor"}
+        J -- "Rule" --> M["SQS Standard (Pedidos Pendentes)"] -- "Trigger" --> N{"Order Processor"}
+        J -- "Rule" --> O["SQS Standard (Cancelar Pedido)"] -- "Trigger" --> P{"Cancel Processor"}
+        J -- "Rule" --> Q["SQS Standard (Alterar Pedido)"] -- "Trigger" --> R{"Update Processor"}
     end
 
     subgraph "Persistencia"
@@ -62,7 +62,7 @@ flowchart LR
     *   **Amazon API Gateway:** Ponto de entrada REST para integração síncrona.
     *   **AWS Lambda:** Execução de lógica de negócio serverless (8 funções).
     *   **Amazon S3:** Armazenamento de objetos para processamento em lote.
-    *   **Amazon SQS:** Filas FIFO para buffers de validação e processamento; filas Standard para notificações S3.
+    *   **Amazon SQS:** Fila FIFO para buffer de validação; filas Standard para processamento e notificações S3.
     *   **Amazon EventBridge:** Orquestrador de eventos para desacoplamento total.
     *   **Amazon DynamoDB:** Banco de dados NoSQL (tabela de produção + tabela de auditoria).
     *   **Amazon SNS:** Serviço de notificações para alertas de erro.
@@ -121,7 +121,7 @@ aws-serverless-order-ingestion/
 │   │   └── feature_request.md  # Template de solicitacao de funcionalidade
 │   └── PULL_REQUEST_TEMPLATE.md # Template de Pull Request
 ├── scripts/                    # Infraestrutura como Codigo (IaC) e Deploy
-│   ├── lib.sh                  # 19 funcoes utilitarias (deploy, validacao, IAM, SQS, EventBridge)
+│   ├── lib.sh                  # 25 funcoes utilitarias (deploy, validacao, IAM, SQS, EventBridge)
 │   ├── deploy-api-flow.sh      # Provisiona API Gateway, SQS FIFO, Pre-Validator e Validator
 │   ├── deploy-s3-flow.sh       # Provisiona S3, SQS Standard, File Validator e Auditoria
 │   ├── deploy-order-processor.sh # Provisiona o Processador Central (persistencia)
@@ -217,7 +217,7 @@ chmod +x run.sh
 7.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
 
 ### Utilitários (scripts/lib.sh)
-Os scripts de deploy compartilham 22 funções utilitárias:
+Os scripts de deploy compartilham 25 funções utilitárias:
 
 | Função | Descrição |
 |--------|-----------|
@@ -243,6 +243,9 @@ Os scripts de deploy compartilham 22 funções utilitárias:
 | `validate_resource_suffix` | Valida formato do RESOURCE_SUFFIX (apenas [a-z0-9-], max 20 char) |
 | `get_endpoint_url` | Monta URL do API Gateway ou S3 website conforme ambiente (AWS ou LocalStack) |
 | `poll_resource` | Polling generico com timeout configuravel para aguardar recursos ficarem prontos |
+| `ensure_api_resource_policy` | Aplica Resource Policy no API Gateway restringindo por IP (POST /test) |
+| `ensure_dlq_alarm` | Cria CloudWatch Alarm para DLQ com acao SNS |
+| `ensure_usage_plan_with_api_key` | Cria Usage Plan, API Key e associa ao stage prod |
 
 ---
 
