@@ -94,7 +94,7 @@ echo ""
 echo "--- Test 2: S3 File Upload (Validation + Audit only) ---"
 
 S3_BUCKET="order-files-bucket-${RESOURCE_SUFFIX}"
-S3_FILE_BODY='{"lista_pedidos":[{"id_pedido_arquivo":"BAT-100","id_cliente_arquivo":"CLI-BATCH","itens_pedido_arquivo":[{"sku":"ITEM-LOTE","qtd":1,"preco":99.9}]}]}'
+S3_FILE_BODY='{"lista_pedidos":[{"pedidoId":"BAT-100","clienteId":"CLI-BATCH","itens":[{"sku":"ITEM-LOTE","qtd":1,"preco":99.9}]}]}'
 S3_KEY="pedidos_$(date +%s).json"
 
 echo "Uploading test file to s3://${S3_BUCKET}/${S3_KEY}"
@@ -337,6 +337,21 @@ if [ "$TTL_STATUS" = "ENABLED" ]; then
     echo "PASS: Audit table $AUDIT_TABLE_NAME has TimeToLiveStatus=ENABLED"
 else
     echo "FAIL: Audit table TTL status=$TTL_STATUS (expected ENABLED)"
+fi
+
+# === 14. Test Controller detailType Allowlist ===
+echo ""
+echo "--- Test 14: test_controller reject invalid detailType ---"
+CTRL_INVALID_DT_RESPONSE=$(curl -s -X POST "$TEST_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $API_KEY_VALUE" \
+  -d "{\"action\":\"publish_event\",\"detailType\":\"OrderCreated\",\"detail\":{\"pedidoId\":\"CTRL-BAD-DT-$(date +%s)\"}}" 2>&1 || echo "CURL_FAILED:$?")
+CTRL_INVALID_DT_STATUS=$(echo "$CTRL_INVALID_DT_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('statusCode', 999))" 2>/dev/null || echo "PARSE_FAILED")
+if [ "$CTRL_INVALID_DT_STATUS" = "400" ]; then
+    echo "PASS: test_controller rejected invalid detailType with 400"
+else
+    echo "FAIL: test_controller returned statusCode=$CTRL_INVALID_DT_STATUS (expected 400)"
+    echo "  Response: $CTRL_INVALID_DT_RESPONSE"
 fi
 
 # === Summary ===

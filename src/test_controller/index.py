@@ -33,12 +33,17 @@ def lambda_handler(event, context):
         return error_response(500, str(e))
 
 
+ALLOWED_DETAIL_TYPES = {'OrderCancelled', 'OrderUpdated'}
+
 def handle_publish_event(body):
     detail_type = body.get('detailType')
     detail = body.get('detail')
 
     if not detail_type or detail is None:
         return error_response(400, 'detailType and detail are required')
+
+    if detail_type not in ALLOWED_DETAIL_TYPES:
+        return error_response(400, f'detailType must be one of: {", ".join(sorted(ALLOWED_DETAIL_TYPES))}')
 
     response = eventbridge.put_events(
         Entries=[{
