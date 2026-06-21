@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 source "$SCRIPT_DIR/lib.sh"
 
 load_env "$SCRIPT_DIR/../.env"
@@ -65,7 +66,7 @@ zip -qr "$SCRIPT_DIR/lambda_deploy_pre.zip" .
 cd "$SCRIPT_DIR"
 rm -rf "$PKG_DIR_PRE"
 
-ensure_lambda_function "$PRE_LAMBDA_NAME" "$PRE_ROLE_NAME" "index.lambda_handler" "lambda_deploy_pre.zip" "$AWS_REGION" "$ACCOUNT_ID" "SQS_QUEUE_URL=$VALIDATION_BUFFER_URL"
+ensure_lambda_function "$PRE_LAMBDA_NAME" "$PRE_ROLE_NAME" "index.lambda_handler" "lambda_deploy_pre.zip" "$AWS_REGION" "$ACCOUNT_ID" "5" "SQS_QUEUE_URL=$VALIDATION_BUFFER_URL"
 validate_lambda_config "$PRE_LAMBDA_NAME" "$AWS_REGION" "SQS_QUEUE_URL"
 rm -f lambda_deploy_pre.zip
 
@@ -86,7 +87,7 @@ zip -qr "$SCRIPT_DIR/lambda_deploy_val.zip" .
 cd "$SCRIPT_DIR"
 rm -rf "$PKG_DIR_VAL"
 
-ensure_lambda_function "$VAL_LAMBDA_NAME" "$VAL_ROLE_NAME" "index.lambda_handler" "lambda_deploy_val.zip" "$AWS_REGION" "$ACCOUNT_ID" "EVENT_BUS_NAME=$EVENT_BUS_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
+ensure_lambda_function "$VAL_LAMBDA_NAME" "$VAL_ROLE_NAME" "index.lambda_handler" "lambda_deploy_val.zip" "$AWS_REGION" "$ACCOUNT_ID" "5" "EVENT_BUS_NAME=$EVENT_BUS_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
 validate_lambda_config "$VAL_LAMBDA_NAME" "$AWS_REGION" "EVENT_BUS_NAME" "SNS_TOPIC_ARN"
 rm -f lambda_deploy_val.zip
 
@@ -101,6 +102,41 @@ if [ -z "$REST_API_ID" ] || [ "$REST_API_ID" == "None" ]; then
     REST_API_ID=$(aws apigateway create-rest-api --name "$REST_API_NAME" --region "$AWS_REGION" --query id --output text)
 fi
 validate_not_empty "REST_API_ID" "$REST_API_ID" "REST API ID"
+
+# ================================================================
+# Resource Policy (IP Restriction)
+# ================================================================
+ensure_api_resource_policy "$REST_API_ID" "$AWS_REGION"
+
+# ================================================================
+# Request Validator (JSON Schema) for POST /orders
+# ================================================================
+
+MODEL_NAME="OrderRequestModel"
+SCHEMA_FILE="$SCRIPT_DIR/schemas/order-request.json"
+MODEL_EXISTS=$(aws apigateway get-model --rest-api-id "$REST_API_ID" --model-name "$MODEL_NAME" --region "$AWS_REGION" --query name --output text 2>/dev/null || echo "NOT_FOUND")
+if [ "$MODEL_EXISTS" = "NOT_FOUND" ]; then
+    echo "Criando Model $MODEL_NAME no API Gateway..."
+    aws apigateway create-model \
+        --rest-api-id "$REST_API_ID" \
+        --name "$MODEL_NAME" \
+        --content-type "application/json" \
+        --schema file://"$SCHEMA_FILE" \
+        --region "$AWS_REGION"
+fi
+
+VALIDATOR_NAME="OrderRequestValidator"
+VALIDATOR_ID=$(aws apigateway get-request-validators --rest-api-id "$REST_API_ID" --region "$AWS_REGION" --query "items[?name=='$VALIDATOR_NAME'].id" --output text)
+if [ -z "$VALIDATOR_ID" ] || [ "$VALIDATOR_ID" == "None" ]; then
+    echo "Criando Request Validator $VALIDATOR_NAME..."
+    VALIDATOR_ID=$(aws apigateway create-request-validator \
+        --rest-api-id "$REST_API_ID" \
+        --name "$VALIDATOR_NAME" \
+        --validate-request-body \
+        --region "$AWS_REGION" --query id --output text)
+fi
+validate_not_empty "VALIDATOR_ID" "$VALIDATOR_ID" "Request Validator ID"
+
 API_ROOT_RESOURCE_ID=$(aws apigateway get-resources --rest-api-id "$REST_API_ID" --region "$AWS_REGION" --query "items[?path=='/'].id" --output text)
 ORDERS_RESOURCE_ID=$(aws apigateway get-resources --rest-api-id "$REST_API_ID" --region "$AWS_REGION" --query "items[?path=='/orders'].id" --output text)
 if [ -z "$ORDERS_RESOURCE_ID" ] || [ "$ORDERS_RESOURCE_ID" == "None" ]; then
@@ -108,9 +144,13 @@ if [ -z "$ORDERS_RESOURCE_ID" ] || [ "$ORDERS_RESOURCE_ID" == "None" ]; then
 fi
 validate_not_empty "ORDERS_RESOURCE_ID" "$ORDERS_RESOURCE_ID" "Resource /orders"
 
-# POST method
+# POST method with Request Validator and Model
 if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method POST --region "$AWS_REGION" >/dev/null 2>&1; then
-    aws apigateway put-method --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" --http-method POST --authorization-type "NONE" --region "$AWS_REGION"
+    aws apigateway put-method --rest-api-id "$REST_API_ID" --resource-id "$ORDERS_RESOURCE_ID" \
+        --http-method POST --authorization-type "NONE" \
+        --request-validator-id "$VALIDATOR_ID" \
+        --request-models "application/json=$MODEL_NAME" \
+        --region "$AWS_REGION"
 fi
 
 setup_api_cors "$REST_API_ID" "$ORDERS_RESOURCE_ID" "$AWS_REGION"
@@ -121,6 +161,8 @@ aws apigateway put-integration --rest-api-id "$REST_API_ID" --resource-id "$ORDE
 aws lambda remove-permission --function-name "$PRE_LAMBDA_NAME" --statement-id apigateway --region "$AWS_REGION" 2>/dev/null || true
 aws lambda add-permission --function-name "$PRE_LAMBDA_NAME" --statement-id apigateway --action lambda:InvokeFunction --principal apigateway.amazonaws.com --source-arn "arn:aws:execute-api:$AWS_REGION:$ACCOUNT_ID:$REST_API_ID/*/POST/orders" --region "$AWS_REGION"
 aws apigateway create-deployment --rest-api-id "$REST_API_ID" --stage-name prod --region "$AWS_REGION"
+
+ensure_dlq_alarm "dlq-alarm-validation-$RESOURCE_SUFFIX" "$VALIDATION_DLQ" "$SNS_TOPIC_ARN" "$AWS_REGION"
 
 echo "API Flow deployment complete."
 echo "SNS Topic ARN: $SNS_TOPIC_ARN"
