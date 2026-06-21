@@ -540,3 +540,177 @@ sequenceDiagram
 **Justificativa:** Cleanup completo seguindo padrao idempotente ja usado no restante do script.
 
 ---
+
+## Rodada 5
+
+### 1. [ALTA] Usage Plan + API Key obrigatoria na rota POST /test
+
+**Localizacao:** `scripts/lib.sh` (nova funcao `ensure_usage_plan_with_api_key`), `scripts/deploy-frontend.sh`, `frontend/app.js`, `frontend/config.template.js`, `scripts/validate-flow.sh`, `.gitignore`
+
+**Problema:** A rota `POST /test` (test_controller) permitia `publish_event` arbitrario no EventBridge e `upload_file` arbitrario no S3 sem nenhuma autenticacao. Qualquer pessoa com a URL podia usar a rota.
+
+**Correcao:**
+- Criada funcao `ensure_usage_plan_with_api_key()` em `lib.sh` que cria API Key, Usage Plan com throttle (rateLimit=5, burstLimit=10) e quota (1000 req/dia), e associa a chave ao plan.
+- Metodo POST /test alterado para `--api-key-required` em `deploy-frontend.sh`.
+- API Key salva em `scripts/.api-key` (adicionado ao `.gitignore`).
+- Placeholder `__TEST_API_KEY__` adicionado ao `config.template.js` e substituido via sed no deploy.
+- `frontend/app.js` envia header `x-api-key` em todas as chamadas para `TEST_ENDPOINT`.
+- `validate-flow.sh` inclui `x-api-key` nos testes 6-8 e adiciona teste 6a para confirmar 403 sem chave.
+
+**Justificativa:** Sem WAF ou Cognito disponiveis na conta de laboratorio, Usage Plan com API Key e a unica forma nativa de autenticacao do API Gateway que atende ao requisito. O Usage Plan tambem protege contra abuso com throttle e quota.
+
+**Validacao:**
+- Teste 6a em `validate-flow.sh`: chamada POST /test sem `x-api-key` retorna 403.
+- Testes 6-8 em `validate-flow.sh`: chamadas com `x-api-key` funcionam normalmente.
+- POST /orders e GET /orders continuam sem API Key (demonstracao publica).
+
+---
+
+### 2. [ALTA] Resource Policy no API Gateway restringindo /test por IP de origem
+
+**Localizacao:** `scripts/lib.sh` (nova funcao `ensure_api_resource_policy`), `scripts/deploy-api-flow.sh`, `.env.example`
+
+**Problema:** Mesmo com API Key, a rota /test ainda estava acessivel publicamente na internet.
+
+**Correcao:**
+- Variavel `ALLOWED_SOURCE_IP` adicionada ao `.env.example` com comentario explicando que e opcional (vazio = sem restricao).
+- Funcao `ensure_api_resource_policy()` criada em `lib.sh` que aplica Resource Policy via `aws apigateway update-rest-api` com condicao `aws:SourceIp`.
+- Chamada em `deploy-api-flow.sh` apos criacao do REST API.
+
+**Justificativa:** Resource Policy do API Gateway e o mecanismo nativo para restricao por IP. Nao requer servicos adicionais. Quando a variavel esta vazia, o comportamento atual e preservado (sem regressao). Sem WAF disponivel, esta e a unica camada de protecao por rede.
+
+**Validacao:** Documentada em `docs/deploy_scripts.md` como teste manual (nao automatizavel sem trocar de IP). Com `ALLOWED_SOURCE_IP` definido, chamadas de outro IP retornam 403. Com variavel vazia, comportamento inalterado.
+
+---
+
+### 3. [ALTA] Request Validator (JSON Schema) no metodo POST /orders
+
+**Localizacao:** `scripts/schemas/order-request.json` (novo), `scripts/deploy-api-flow.sh`
+
+**Problema:** A validacao de `pedidoId`/`clienteId` ocorria apenas dentro da Lambda pre_validator. Payloads malformados geravam invocacao completa da Lambda antes de serem rejeitados.
+
+**Correcao:**
+- Criado `scripts/schemas/order-request.json` com JSON Schema exigindo `pedidoId` (string) e `clienteId` (string) como obrigatorios.
+- Model `OrderRequestModel` criado no API Gateway referenciando o schema.
+- Request Validator `OrderRequestValidator` criado com `validate-request-body=true`.
+- Associados ao metodo POST /orders via `--request-validator-id` e `--request-models`.
+
+**Justificativa:** O Request Validator do API Gateway rejeita payloads malformados antes de invocar a Lambda, economizando invocacoes e reduzindo latencia para clientes com payload invalido. A Lambda pre_validator mantem sua validacao como camada adicional de seguranca (defense in depth).
+
+**Validacao:** Adicionado no `validate-flow.sh`: enviar POST /orders sem `pedidoId` retorna 400 com "Invalid request body" (mensagem padrao do API Gateway), nao a mensagem customizada da Lambda.
+
+---
+
+### 4. [MEDIA] Retencao de logs do CloudWatch em todas as Lambdas
+
+**Localizacao:** `scripts/lib.sh` (funcao `ensure_lambda_function`), `scripts/deploy-frontend.sh` (funcao `deploy_lambda`)
+
+**Problema:** Os log groups `/aws/lambda/*` nao tinham politica de retencao, ficando como "Never Expire" e acumulando custo indefinidamente.
+
+**Correcao:**
+- Em `ensure_lambda_function()`, adicionado `aws logs put-retention-policy` com 14 dias apos criacao/atualizacao da funcao.
+- Mesma chamada adicionada em `deploy_lambda()` em `deploy-frontend.sh`, que nao usa `ensure_lambda_function`.
+
+**Justificativa:** 14 dias e um periodo razoavel para depuracao sem acumular custo significativo. Logs de erro sao preservados por tempo suficiente para investigacao. O `2>/dev/null || true` trata o caso do log group ainda nao existir na primeira execucao.
+
+**Validacao:** Teste 10 em `validate-flow.sh` verifica `retentionInDays=14` para `order-persister-*` e `order-pre-validator-*`.
+
+---
+
+### 5. [MEDIA] Reduzir payload logado nas Lambdas (custo de ingestao CloudWatch Logs)
+
+**Localizacao:** `src/order_processor/index.py`, `src/order_validator/index.py`, `src/lifecycle_ops/index.py`, `src/batch_processor/index.py`, `src/pre_validator/index.py`
+
+**Problema:** Varias Lambdas faziam `print(f"... {json.dumps(event)}")`, logando o payload SQS/API completo a cada invocacao, incluindo dados de cliente. Essa era a maior fonte de custo de ingestao de logs.
+
+**Correcao:** Em cada uma das 5 Lambdas, substituido o `print()` que logava o event completo por `print()` que loga apenas a quantidade de records e, dentro do loop, o `pedidoId` do record atual via `log_event()`.
+
+**Justificativa:** Logs de sucesso/info raramente precisam do payload completo para depuracao. Logs de erro (blocos `except`) mantem detalhes completos por ocorrerem com baixa frequencia. A reducao de volume de logs reduz custo de ingestao do CloudWatch.
+
+**Validacao:** Revisao manual de cada arquivo confirma que nenhum `print()` de sucesso/info contem `json.dumps(event)` do payload completo. Convencao documentada em `docs/common.md`.
+
+---
+
+### 6. [MEDIA] Logging estruturado com pedidoId como correlacao entre Lambdas
+
+**Localizacao:** `src/common/utils.py` (nova funcao `log_event`), `src/order_processor/index.py`, `src/order_validator/index.py`, `src/lifecycle_ops/index.py`, `src/pre_validator/index.py`
+
+**Problema:** Sem AWS X-Ray disponivel, nao havia como correlacionar o fluxo completo de um pedido atraves das 4+ Lambdas que ele atravessa, exceto lendo manualmente cada log group.
+
+**Correcao:**
+- Adicionada funcao `log_event(stage, pedido_id, message)` em `src/common/utils.py` que produz `print()` em formato JSON: `{"stage": stage, "pedidoId": pedido_id, "message": message, "timestamp": utcnow_iso()}`.
+- `print()` informativos relevantes substituidos por `log_event()` nas 4 Lambdas (pre_validator, order_validator, order_processor, lifecycle_ops), sempre passando `pedidoId` do record sendo processado.
+
+**Justificativa:** O formato JSON estruturado permite usar CloudWatch Logs Insights para correlacionar eventos pelo `pedidoId`, compensando a ausencia de X-Ray. Cada Lambda emite logs com o mesmo `pedidoId`, permitindo queries de filtro e ordenacao temporal.
+
+**Fluxo de correlacao:**
+
+```mermaid
+sequenceDiagram
+    participant PRE as pre_validator
+    participant VAL as order_validator
+    participant PERS as order_processor
+    participant LC as lifecycle_ops
+    participant CW as CloudWatch Logs
+
+    PRE->>CW: log_event("pre_validator", "ORD-123", ...)
+    VAL->>CW: log_event("order_validator", "ORD-123", ...)
+    PERS->>CW: log_event("order_processor", "ORD-123", ...)
+    LC->>CW: log_event("lifecycle_ops", "ORD-123", ...)
+    Note over CW: Query: filter pedidoId = "ORD-123" | sort @timestamp asc
+```
+
+**Validacao:** Documentado em `docs/observability.md` com query de exemplo do CloudWatch Logs Insights e diagrama Mermaid.
+
+---
+
+### 7. [BAIXA] CloudWatch Alarm nas DLQs com notificacao via SNS
+
+**Localizacao:** `scripts/lib.sh` (nova funcao `ensure_dlq_alarm`), `scripts/deploy-api-flow.sh`, `scripts/deploy-s3-flow.sh`, `scripts/deploy-order-processor.sh`, `scripts/deploy-lifecycle-ops.sh`
+
+**Problema:** Nao existia alerta automatico quando mensagens comecavam a cair nas DLQs, dependendo de verificacao manual.
+
+**Correcao:**
+- Criada funcao `ensure_dlq_alarm()` em `lib.sh` que cria CloudWatch Alarm monitorando `ApproximateNumberOfMessagesVisible` com threshold >= 1, period 300, evaluation-periods 1, acao SNS.
+- Chamada para cada uma das 5 DLQs: `validation-dlq`, `persister-dlq`, `cancel-dlq`, `update-dlq`, `s3-batch-dlq`.
+
+**Justificativa:** Alerta proativo evita que mensagens acumulem silenciosamente nas DLQs. O SNS Topic ja existente no projeto e reutilizado para as notificacoes, sem criar nova infraestrutura.
+
+**Validacao:** Teste 11 em `validate-flow.sh` confirma existencia dos 5 alarmes via `aws cloudwatch describe-alarms`.
+
+---
+
+### 8. [BAIXA] Reserved Concurrency em todas as Lambdas
+
+**Localizacao:** `scripts/lib.sh` (funcao `ensure_lambda_function`), `scripts/deploy-frontend.sh`, `scripts/deploy-api-flow.sh`, `scripts/deploy-s3-flow.sh`, `scripts/deploy-order-processor.sh`, `scripts/deploy-lifecycle-ops.sh`
+
+**Problema:** Sem WAF ou Usage Plan obrigatorio em todas as rotas, um volume alto de chamadas podia gerar custo inesperado em uma conta de laboratorio compartilhada.
+
+**Correcao:**
+- Adicionado 7o parametro opcional `reserved_concurrency` a `ensure_lambda_function()`, aplicando `put-function-concurrency` quando definido.
+- `reserved_concurrency=5` para todas as Lambdas (pre_validator, order_validator, file_validator, order_persister, cancel, update, test_controller).
+- `reserved_concurrency=10` para `read_order` (consultada com mais frequencia pelo frontend).
+- Em `deploy-frontend.sh` (que nao usa `ensure_lambda_function`), adicionado `put-function-concurrency` separadamente.
+
+**Justificativa:** Reserved Concurrency limita o numero maximo de execucoes simultaneas de cada Lambda, protegendo contra custo excessivo em caso de pico de chamadas. Nao se trata de otimizacao de performance, mas de protecao de custo em conta compartilhada de laboratorio.
+
+**Validacao:** Teste 12 em `validate-flow.sh` confirma `ReservedConcurrentExecutions=5` para `order-persister-*` e `=10` para `order-reader-*`.
+
+---
+
+### 9. [BAIXA] TTL na tabela de auditoria DynamoDB
+
+**Localizacao:** `scripts/deploy-s3-flow.sh`, `src/batch_processor/index.py`, `src/common/utils.py`
+
+**Problema:** `order-batch-audit-*` armazenava registros de auditoria indefinidamente, sem expiracao.
+
+**Correcao:**
+- Em `deploy-s3-flow.sh`, apos criacao da tabela, habilitado TTL via `aws dynamodb update-time-to-live` com `AttributeName=expiresAt`.
+- Funcao `utcnow_plus_days_epoch(days)` adicionada a `src/common/utils.py`.
+- Em `src/batch_processor/index.py`, `expiresAt` = `utcnow_plus_days_epoch(90)` adicionado ao Item do `put_item`.
+
+**Justificativa:** 90 dias e um periodo adequado para auditoria. Apos esse periodo, o DynamoDB remove automaticamente os registros sem custo de armazenamento. O TTL e idempotente (checagem `describe-time-to-live` antes de ativar).
+
+**Validacao:** Teste 13 em `validate-flow.sh` confirma `TimeToLiveStatus=ENABLED` via `aws dynamodb describe-time-to-live`. Documentado em `docs/batch_processor.md`.
+
+---

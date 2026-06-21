@@ -21,8 +21,13 @@ Processa arquivos JSON enviados ao bucket S3. Valida o schema (presenca de `list
 | `DYNAMODB_TABLE` | Nome da tabela de auditoria |
 | `SNS_TOPIC_ARN` | ARN do topico SNS para alertas de schema invalido |
 
+## Politica de retencao
+
+Registros de auditoria expiram apos 90 dias via TTL no DynamoDB. O campo `expiresAt` (epoch seconds) e calculado no momento da insercao por `common.utils.utcnow_plus_days_epoch(90)`. Apos expiracao, o DynamoDB remove automaticamente os registros sem custo adicional de armazenamento.
+
 ## Mudancas recentes
 
 - Removido ramo de desembrulhamento de notificacao SNS (codigo morto, a arquitetura atual usa S3 -> SQS direta).
 - Uso de `common.sns.publish_error()` em vez de try/except inline.
 - Adicionado `batchItemFailures` para erros de parse do record SQS.
+- Adicionado campo `expiresAt` (TTL de 90 dias) nos registros de auditoria.

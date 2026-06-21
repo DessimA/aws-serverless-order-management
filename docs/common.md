@@ -16,7 +16,19 @@ Funcoes `api_response()` e `error_response()` que geram respostas padronizadas c
 Funcao `publish_error()` que centraliza a logica de publicacao de alertas SNS com tratamento de erro interno (try/except). Usada por `order_validator`, `batch_processor`, `order_processor` e `lifecycle_ops`.
 
 ### `utils.py`
-Utilitarios gerais (quando aplicavel).
+Utilitarios gerais do projeto.
+
+#### `utcnow_iso()`
+Retorna o timestamp atual em formato ISO 8601 com sufixo `Z`.
+
+#### `utcnow_plus_days_epoch(days)`
+Retorna o timestamp epoch (segundos) para `days` dias no futuro. Usado para TTL no DynamoDB.
+
+#### `log_event(stage, pedido_id, message)`
+Funcao de logging estruturado que produz uma linha JSON com `stage`, `pedidoId`, `message` e `timestamp`. Substitui `print()` de payloads completos nas Lambdas. Permite correlacionar a jornada de um pedido atraves de múltiplas Lambdas via CloudWatch Logs Insights (ver `docs/observability.md`).
+
+### Convencao de logging
+A partir da Rodada 5, nenhuma Lambda deve logar o payload completo do evento (`json.dumps(event)`) em mensagens de sucesso/info. Apenas campos relevantes sao logados (quantidade de records, pedidoId). Logs de erro (blocos `except`) podem continuar detalhados por ocorrerem com baixa frequencia.
 
 ## Motivacao do padrao
 
