@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 source "$SCRIPT_DIR/lib.sh"
 
 load_env "$SCRIPT_DIR/../.env"
@@ -212,12 +213,32 @@ else
     echo "  Response: $READ_RESPONSE"
 fi
 
+# === Load API Key for /test ===
+API_KEY_FILE="$SCRIPT_DIR/.api-key"
+API_KEY_VALUE=""
+if [ -f "$API_KEY_FILE" ]; then
+    API_KEY_VALUE=$(cat "$API_KEY_FILE")
+fi
+
+# === Test 6a: POST /test without API Key must return 403 ===
+echo ""
+echo "--- Test 6a: POST /test without API Key must return 403 ---"
+TEST_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/test")
+CTRL_NO_KEY_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$TEST_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"action\":\"publish_event\",\"detailType\":\"OrderCancelled\",\"detail\":{\"pedidoId\":\"CTRL-NO-KEY-$(date +%s)\"}}" 2>&1 || echo "CURL_FAILED")
+if [ "$CTRL_NO_KEY_RESPONSE" = "403" ]; then
+    echo "PASS: POST /test without API Key returned 403 Forbidden"
+else
+    echo "FAIL: POST /test without API Key returned HTTP $CTRL_NO_KEY_RESPONSE (expected 403)"
+fi
+
 # === 6. Test Controller: publish_event ===
 echo ""
 echo "--- Test 6: test_controller publish_event ---"
-TEST_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/test")
 CTRL_EVENT_RESPONSE=$(curl -s -X POST "$TEST_ENDPOINT" \
   -H "Content-Type: application/json" \
+  -H "x-api-key: $API_KEY_VALUE" \
   -d "{\"action\":\"publish_event\",\"detailType\":\"OrderCancelled\",\"detail\":{\"pedidoId\":\"CTRL-TEST-$(date +%s)\"}}" 2>&1 || echo "CURL_FAILED:$?")
 if echo "$CTRL_EVENT_RESPONSE" | grep -q "Event published"; then
     echo "PASS: test_controller publish_event succeeded"
@@ -231,6 +252,7 @@ echo ""
 echo "--- Test 7: test_controller upload_file ---"
 CTRL_UPLOAD_RESPONSE=$(curl -s -X POST "$TEST_ENDPOINT" \
   -H "Content-Type: application/json" \
+  -H "x-api-key: $API_KEY_VALUE" \
   -d "{\"action\":\"upload_file\",\"filename\":\"validate-test-$(date +%s).json\",\"content\":{\"test\":true}}" 2>&1 || echo "CURL_FAILED:$?")
 if echo "$CTRL_UPLOAD_RESPONSE" | grep -q "File uploaded"; then
     echo "PASS: test_controller upload_file succeeded"
@@ -244,6 +266,7 @@ echo ""
 echo "--- Test 8: test_controller list_files ---"
 CTRL_LIST_RESPONSE=$(curl -s -X POST "$TEST_ENDPOINT" \
   -H "Content-Type: application/json" \
+  -H "x-api-key: $API_KEY_VALUE" \
   -d "{\"action\":\"list_files\",\"prefix\":\"validate-test\"}" 2>&1 || echo "CURL_FAILED:$?")
 if echo "$CTRL_LIST_RESPONSE" | grep -q "files"; then
     echo "PASS: test_controller list_files succeeded"
@@ -262,6 +285,58 @@ elif [ "$FRONTEND_CHECK" = "403" ]; then
     echo "WARN: Frontend returned 403 (may need bucket policy check)"
 else
     echo "WARN: Frontend HTTP status: $FRONTEND_CHECK"
+fi
+
+# === 10. CloudWatch Log Retention Verification ===
+echo ""
+echo "--- Test 10: CloudWatch Log Retention (14 days) ---"
+for CHECK_LAMBDA in "order-persister-$RESOURCE_SUFFIX" "order-pre-validator-$RESOURCE_SUFFIX"; do
+    RETENTION=$(aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/$CHECK_LAMBDA" --region "$AWS_REGION" --query "logGroups[0].retentionInDays" --output text 2>/dev/null || echo "NOT_FOUND")
+    if [ "$RETENTION" = "14" ]; then
+        echo "PASS: Log group /aws/lambda/$CHECK_LAMBDA has retentionInDays=14"
+    else
+        echo "FAIL: Log group /aws/lambda/$CHECK_LAMBDA retention=$RETENTION (expected 14)"
+    fi
+done
+
+# === 11. CloudWatch DLQ Alarms Verification ===
+echo ""
+echo "--- Test 11: DLQ Alarms exist ---"
+for ALARM_NAME in "dlq-alarm-validation-$RESOURCE_SUFFIX" "dlq-alarm-persister-$RESOURCE_SUFFIX" "dlq-alarm-cancel-$RESOURCE_SUFFIX" "dlq-alarm-update-$RESOURCE_SUFFIX" "dlq-alarm-s3-batch-$RESOURCE_SUFFIX"; do
+    ALARM_EXISTS=$(aws cloudwatch describe-alarms --alarm-names "$ALARM_NAME" --region "$AWS_REGION" --query "MetricAlarms[0].AlarmName" --output text 2>/dev/null || echo "NOT_FOUND")
+    if [ "$ALARM_EXISTS" != "None" ] && [ "$ALARM_EXISTS" != "NOT_FOUND" ]; then
+        echo "PASS: Alarm $ALARM_NAME exists"
+    else
+        echo "FAIL: Alarm $ALARM_NAME not found"
+    fi
+done
+
+# === 12. Reserved Concurrency Verification ===
+echo ""
+echo "--- Test 12: Reserved Concurrency ---"
+for CHECK_LAMBDA in "order-persister-$RESOURCE_SUFFIX" "order-reader-$RESOURCE_SUFFIX"; do
+    RC_VALUE=$(aws lambda get-function-concurrency --function-name "$CHECK_LAMBDA" --region "$AWS_REGION" --query "ReservedConcurrentExecutions" --output text 2>/dev/null || echo "NOT_FOUND")
+    if [ "$CHECK_LAMBDA" = "order-reader-$RESOURCE_SUFFIX" ]; then
+        EXPECTED_RC="10"
+    else
+        EXPECTED_RC="5"
+    fi
+    if [ "$RC_VALUE" = "$EXPECTED_RC" ]; then
+        echo "PASS: $CHECK_LAMBDA has ReservedConcurrentExecutions=$EXPECTED_RC"
+    else
+        echo "FAIL: $CHECK_LAMBDA ReservedConcurrentExecutions=$RC_VALUE (expected $EXPECTED_RC)"
+    fi
+done
+
+# === 13. DynamoDB Audit Table TTL Verification ===
+echo ""
+echo "--- Test 13: DynamoDB Audit Table TTL ---"
+AUDIT_TABLE_NAME="order-batch-audit-$RESOURCE_SUFFIX"
+TTL_STATUS=$(aws dynamodb describe-time-to-live --table-name "$AUDIT_TABLE_NAME" --region "$AWS_REGION" --query "TimeToLiveDescription.TimeToLiveStatus" --output text 2>/dev/null || echo "NOT_FOUND")
+if [ "$TTL_STATUS" = "ENABLED" ]; then
+    echo "PASS: Audit table $AUDIT_TABLE_NAME has TimeToLiveStatus=ENABLED"
+else
+    echo "FAIL: Audit table TTL status=$TTL_STATUS (expected ENABLED)"
 fi
 
 # === Summary ===
