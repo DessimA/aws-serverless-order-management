@@ -714,3 +714,103 @@ sequenceDiagram
 **Validacao:** Teste 13 em `validate-flow.sh` confirma `TimeToLiveStatus=ENABLED` via `aws dynamodb describe-time-to-live`. Documentado em `docs/batch_processor.md`.
 
 ---
+
+## Rodada 6
+
+### 1. [CRITICA] README - Mermaid diagram: rotulos SQS FIFO incorretos
+
+**Localizacao:** `README.md` (linhas 36-38)
+
+**Problema:** O diagrama Mermaid na secao 2 exibia `SQS FIFO (Pedidos Pendentes)`, `SQS FIFO (Cancelar Pedido)` e `SQS FIFO (Alterar Pedido)`, mas estas filas sao Standard, nao FIFO.
+
+**Correcao:** Alterado rotulo de `SQS FIFO` para `SQS Standard` nas tres filas.
+
+**Justificativa:** FIFO e usado apenas para o buffer de validacao (`order-validation-buffer`). As filas de processamento (pedidos pendentes, cancelamento, alteracao) sao Standard, pois EventBridge nao suporta `MessageGroupId` em filas Standard, e a ordenacao estrita nao e necessaria.
+
+**Validacao:** Validacao visual.
+
+### 2. [CRITICA] README - Descricao SQS incorreta
+
+**Localizacao:** `README.md` secao 3 (linha 65)
+
+**Problema:** "Filas FIFO para buffers de validacao e processamento" sugeria que filas de processamento tambem eram FIFO.
+
+**Correcao:** Alterado para "Fila FIFO para buffer de validacao; filas Standard para processamento e notificacoes S3."
+
+**Justificativa:** Alinhamento com a arquitetura real.
+
+**Validacao:** Validacao visual.
+
+### 3. [IMPORTANTE] Resource Policy movida e refinada
+
+**Localizacao:** `scripts/lib.sh`, `scripts/deploy-api-flow.sh`, `scripts/deploy-frontend.sh`, `docs/deploy_scripts.md`
+
+**Problema:** `ensure_api_resource_policy()` era chamada em `deploy-api-flow.sh` e aplicava restricao a toda API (`*/*`), impedindo que o frontend (acesso publico) funcionasse em ambientes com ALLOWED_SOURCE_IP ativo.
+
+**Correcao:**
+- Em `lib.sh`, Resource ARN alterado de `arn:aws:execute-api:$region:*:$rest_api_id/*` para `arn:aws:execute-api:$region:*:$rest_api_id/*/POST/test`.
+- Em `deploy-api-flow.sh`, removida a chamada a `ensure_api_resource_policy`.
+- Em `deploy-frontend.sh`, adicionada a chamada a `ensure_api_resource_policy` apos a criacao do recurso POST /test e antes do Usage Plan.
+
+**Justificativa:** A restricao de IP deve proteger apenas o endpoint `/test` (que expoe acesso ao EventBridge). Os endpoints `/orders` (POST) e `/orders/{id}` (GET) permanecem publicos para o frontend.
+
+**Validacao:** A restricao agora cobre apenas `*/*/POST/test`, permitindo que GET /orders e POST /orders funcionem sem restricao de IP.
+
+### 4. [IMPORTANTE] Cleanup.sh - secoes faltantes
+
+**Localizacao:** `cleanup.sh`
+
+**Problema:** O script de limpeza nao removia API Key, Usage Plan, CloudWatch Alarms, nem o arquivo `.api-key`.
+
+**Correcao:** Adicionadas secoes:
+- Remocao dos 5 CloudWatch Alarms (`dlq-alarm-validation-*`, `dlq-alarm-persister-*`, `dlq-alarm-cancel-*`, `dlq-alarm-update-*`, `dlq-alarm-s3-batch-*`)
+- Desassociacao da API Key do Usage Plan, remocao da API Key e remocao do Usage Plan.
+- Remocao do arquivo `.api-key` no diretorio `scripts/`.
+
+**Justificativa:** Idempotencia completa da limpeza. Sem estas secoes, reexecutar `./run.sh` falhava ao tentar recriar Usage Plan ou API Key com nomes ja existentes (ou gerava lixo acumulado).
+
+**Validacao:** Execucao de `cleanup.sh` seguida de `./run.sh` completo sem erros.
+
+### 5. [MEDIA] test_controller - detailType sem validacao
+
+**Localizacao:** `src/test_controller/index.py`, `docs/test_controller.md`, `scripts/validate-flow.sh`
+
+**Problema:** `handle_publish_event` aceitava qualquer `detailType` sem restricao, permitindo publicar eventos de tipos nao suportados pelo sistema (ex: `OrderCreated`) que nunca seriam roteados pelo EventBridge (sem regra correspondente), mas consumiriam cota de PUT events.
+
+**Correcao:**
+- Em `src/test_controller/index.py`, adicionada constante `ALLOWED_DETAIL_TYPES = {'OrderCancelled', 'OrderUpdated'}` e validacao no inicio de `handle_publish_event`: se `detail_type not in ALLOWED_DETAIL_TYPES`, retorna `400 Bad Request`.
+- Em `docs/test_controller.md`, documentada a nova validacao.
+- Em `scripts/validate-flow.sh`, adicionado Teste 14 que envia `detailType: OrderCreated` (invalido) e verifica retorno HTTP 400.
+
+**Justificativa:** O test_controller e uma ferramenta interna de teste; bloquear detailTypes invalidos na origem evita ruido no barramento e fornece feedback imediato ao usuario do endpoint.
+
+**Validacao:** Teste 14 em `validate-flow.sh` envia `detailType: OrderCreated` e confirma `statusCode=400`.
+
+### 6. [BAIXA] README - contagem de funcoes desatualizada
+
+**Localizacao:** `README.md` (linhas 124, 220, tabela de utilitarios)
+
+**Problema:** A arvore de diretorios exibia "19 funcoes utilitarias" e a secao de utilitarios exibia "22 funcoes" e a tabela tinha 22 linhas, mas `lib.sh` possui 25 funcoes apos 3 adicoes nas rodadas 5 e 6.
+
+**Correcao:**
+- Arvore: "19 funcoes" -> "25 funcoes"
+- Secao Utilitarios: "22 funcoes" -> "25 funcoes"
+- Tabela: adicionadas linhas para `ensure_api_resource_policy`, `ensure_dlq_alarm` e `ensure_usage_plan_with_api_key`.
+
+**Justificativa:** Documentacao deve refletir o codigo atual.
+
+**Validacao:** Validacao visual.
+
+### 7. [BAIXA] validate-flow.sh - nomes de campos do S3_FILE_BODY incorretos
+
+**Localizacao:** `scripts/validate-flow.sh` (linha 97)
+
+**Problema:** O payload de exemplo usava nomes de campos antigos (`id_pedido_arquivo`, `id_cliente_arquivo`, `itens_pedido_arquivo`) que nao correspondem ao schema esperado pelo `file_validator`.
+
+**Correcao:** Renomeado para `pedidoId`, `clienteId`, `itens` (nomes corretos do schema atual).
+
+**Justificativa:** O payload de teste deve ser compativel com o schema real para que o teste de auditoria S3 funcione corretamente.
+
+**Validacao:** Teste 2 (S3 File Upload) passa a utilizar os nomes de campos corretos.
+
+---
