@@ -2,6 +2,7 @@ import json
 import os
 import boto3
 from common.sns import publish_error
+from common.sqs import parse_body
 from common.utils import utcnow_iso, log_event
 
 eventbridge_client = boto3.client('events')
@@ -17,7 +18,7 @@ def lambda_handler(event, context):
 
     for record in event['Records']:
         try:
-            body = json.loads(record['body'])
+            body = parse_body(record)
 
             order_id = body.get('pedidoId')
             client_id = body.get('clienteId')

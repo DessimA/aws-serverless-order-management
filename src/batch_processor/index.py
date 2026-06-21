@@ -3,6 +3,7 @@ import os
 import boto3
 import urllib.parse
 from common.sns import publish_error
+from common.sqs import parse_body
 from common.utils import utcnow_iso, utcnow_plus_days_epoch, log_event
 
 s3_client = boto3.client('s3')
@@ -18,7 +19,7 @@ def lambda_handler(event, context):
 
     for record in event['Records']:
         try:
-            notification_message = json.loads(record['body'])
+            notification_message = parse_body(record)
 
             for s3_event_record in notification_message.get('Records', []):
                 bucket = s3_event_record['s3']['bucket']['name']
