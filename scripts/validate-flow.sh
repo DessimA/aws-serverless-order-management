@@ -354,6 +354,52 @@ else
     echo "  Response: $CTRL_INVALID_DT_RESPONSE"
 fi
 
+# === 15. Resource Policy Structural Validation ===
+echo ""
+echo "--- Test 15: Resource Policy structural validation ---"
+
+ALLOWED_IP="${ALLOWED_SOURCE_IP:-}"
+if [ -z "$ALLOWED_IP" ]; then
+    echo "SKIP: ALLOWED_SOURCE_IP vazio, sem Resource Policy para validar."
+else
+    POLICY_JSON=$(aws apigateway get-rest-api --rest-api-id "$REST_API_ID" --region "$AWS_REGION" --query policy --output text 2>/dev/null || echo "NONE")
+    if [ -z "$POLICY_JSON" ] || [ "$POLICY_JSON" == "NONE" ] || [ "$POLICY_JSON" == "None" ]; then
+        echo "FAIL: Nenhuma Resource Policy encontrada na API $REST_API_ID"
+        exit 1
+    fi
+    echo "Resource Policy encontrada. Validando estrutura..."
+    ALLOW_COUNT=$(echo "$POLICY_JSON" | python3 -c "
+import sys, json
+policy = json.loads(sys.stdin.read())
+count = 0
+for stmt in policy.get('Statement', []):
+    if stmt.get('Effect') == 'Allow' and '/*' in stmt.get('Resource', '') and '/POST/test' not in stmt.get('Resource', ''):
+        count += 1
+print(count)
+" 2>/dev/null || echo "0")
+    if [ "$ALLOW_COUNT" -lt 1 ]; then
+        echo "FAIL: Nenhuma declaracao Allow com Resource terminando em /*"
+        echo "  Policy: $POLICY_JSON"
+        exit 1
+    fi
+    echo "PASS: Encontrada $ALLOW_COUNT declaracao(oes) Allow com Resource terminando em /*"
+    DENY_COUNT=$(echo "$POLICY_JSON" | python3 -c "
+import sys, json
+policy = json.loads(sys.stdin.read())
+count = 0
+for stmt in policy.get('Statement', []):
+    if stmt.get('Effect') == 'Deny' and '/POST/test' in stmt.get('Resource', '') and 'NotIpAddress' in json.dumps(stmt.get('Condition', {})):
+        count += 1
+print(count)
+" 2>/dev/null || echo "0")
+    if [ "$DENY_COUNT" -lt 1 ]; then
+        echo "FAIL: Nenhuma declaracao Deny com Resource /POST/test e Condition NotIpAddress"
+        echo "  Policy: $POLICY_JSON"
+        exit 1
+    fi
+    echo "PASS: Encontrada $DENY_COUNT declaracao(oes) Deny com Resource /POST/test e Condition NotIpAddress"
+fi
+
 # === Summary ===
 echo ""
 echo "============================================="
