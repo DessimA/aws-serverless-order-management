@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 source "$SCRIPT_DIR/lib.sh"
 
 load_env "$SCRIPT_DIR/../.env"
@@ -58,7 +59,7 @@ deploy_lifecycle_handler() {
 
     # ========== Lambda Deployment ==========
     PKG_DIR=$(mktemp -d)
-    cp "../src/lifecycle_ops/index.py" "$PKG_DIR/"
+    cp ../src/lifecycle_ops/index.py "$PKG_DIR/"
     mkdir -p "$PKG_DIR/common"
     cp ../src/common/*.py "$PKG_DIR/common/"
     cd "$PKG_DIR"
@@ -66,10 +67,12 @@ deploy_lifecycle_handler() {
     cd "$SCRIPT_DIR"
     rm -rf "$PKG_DIR"
 
-    ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.${OPERATION}_handler" "lambda_deploy_${OPERATION}.zip" "$AWS_REGION" "$ACCOUNT_ID" "DYNAMODB_TABLE=$TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
+    ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.${OPERATION}_handler" "lambda_deploy_${OPERATION}.zip" "$AWS_REGION" "$ACCOUNT_ID" "5" "DYNAMODB_TABLE=$TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
     validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE" "SNS_TOPIC_ARN"
 
     ensure_event_source_mapping "$LAMBDA_NAME" "$QUEUE_ARN" "$AWS_REGION"
+
+    ensure_dlq_alarm "dlq-alarm-${OPERATION}-${RESOURCE_SUFFIX}" "$DLQ_NAME" "$SNS_TOPIC_ARN" "$AWS_REGION"
 
     rm -f "lambda_deploy_${OPERATION}.zip"
 }

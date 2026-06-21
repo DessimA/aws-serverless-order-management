@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 source "$SCRIPT_DIR/lib.sh"
 
 load_env "$SCRIPT_DIR/../.env"
@@ -66,9 +67,11 @@ zip -qr "$SCRIPT_DIR/lambda_deploy.zip" .
 cd "$SCRIPT_DIR"
 rm -rf "$PKG_DIR"
 
-ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.lambda_handler" "lambda_deploy.zip" "$AWS_REGION" "$ACCOUNT_ID" "DYNAMODB_TABLE=$TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
+ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.lambda_handler" "lambda_deploy.zip" "$AWS_REGION" "$ACCOUNT_ID" "5" "DYNAMODB_TABLE=$TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
 validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE" "SNS_TOPIC_ARN"
 
 ensure_event_source_mapping "$LAMBDA_NAME" "$QUEUE_ARN" "$AWS_REGION"
+
+ensure_dlq_alarm "dlq-alarm-persister-$RESOURCE_SUFFIX" "$DLQ_NAME" "$SNS_TOPIC_ARN" "$AWS_REGION"
 
 rm -f lambda_deploy.zip
