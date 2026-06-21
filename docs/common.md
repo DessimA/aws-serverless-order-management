@@ -7,7 +7,7 @@ Modulo compartilhado com utilitarios reutilizaveis por todas as Lambdas do proje
 ## Arquivos
 
 ### `sqs.py`
-Funcoes `parse_body()` e `parse_detail()` para extrair seguramente o envelope e o detail de records SQS. Trata tanto o caso de `detail` como string JSON quanto como objeto dict (comportamento real do EventBridge ao entregar para SQS).
+Funcoes `parse_body()` e `parse_detail()` para extrair seguramente o envelope e o detail de records SQS. Trata tanto string JSON quanto dict ja parseado. `parse_body()` deve ser usado por toda Lambda que recebe mensagens SQS, independentemente de a fila ser alimentada diretamente (S3, API) ou via EventBridge, mantendo um unico ponto de leitura de body em todo o projeto.
 
 ### `http.py`
 Funcoes `api_response()` e `error_response()` que geram respostas padronizadas com headers CORS (`Access-Control-Allow-Origin: *`). Todas as Lambdas com integracao via API Gateway utilizam estas funcoes, garantindo consistencia nos headers.
