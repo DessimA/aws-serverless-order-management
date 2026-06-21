@@ -1,0 +1,16 @@
+{
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "title": "OrderRequest",
+    "type": "object",
+    "required": ["pedidoId", "clienteId"],
+    "properties": {
+        "pedidoId": {
+            "type": "string",
+            "description": "Identificador unico do pedido"
+        },
+        "clienteId": {
+            "type": "string",
+            "description": "Identificador do cliente"
+        }
+    }
+}
