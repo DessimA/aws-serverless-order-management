@@ -114,5 +114,35 @@ if [ -n "$TOPIC_ARN" ] && [ "$TOPIC_ARN" != "None" ]; then
     echo "SNS topic deleted: order-notifications-${RESOURCE_SUFFIX}"
 fi
 
+# === CloudWatch Alarms ===
+for ALARM_NAME in "dlq-alarm-validation-${RESOURCE_SUFFIX}" "dlq-alarm-persister-${RESOURCE_SUFFIX}" "dlq-alarm-cancel-${RESOURCE_SUFFIX}" "dlq-alarm-update-${RESOURCE_SUFFIX}" "dlq-alarm-s3-batch-${RESOURCE_SUFFIX}"; do
+    aws cloudwatch delete-alarms --alarm-names "$ALARM_NAME" --region "$AWS_REGION" 2>/dev/null || true
+    echo "CloudWatch Alarm deleted: $ALARM_NAME"
+done
+
+# === API Key + Usage Plan ===
+API_KEY_NAME="order-ingestion-api-key-${RESOURCE_SUFFIX}"
+USAGE_PLAN_NAME="order-ingestion-usage-plan-${RESOURCE_SUFFIX}"
+USAGE_PLAN_ID=$(aws apigateway get-usage-plans --region "$AWS_REGION" --query "items[?name=='$USAGE_PLAN_NAME'].id" --output text 2>/dev/null || true)
+API_KEY_ID=$(aws apigateway get-api-keys --region "$AWS_REGION" --query "items[?name=='$API_KEY_NAME'].id" --output text 2>/dev/null || true)
+
+if [ -n "$USAGE_PLAN_ID" ] && [ "$USAGE_PLAN_ID" != "None" ] && [ -n "$API_KEY_ID" ] && [ "$API_KEY_ID" != "None" ]; then
+    aws apigateway delete-usage-plan-key --usage-plan-id "$USAGE_PLAN_ID" --key-id "$API_KEY_ID" --region "$AWS_REGION" 2>/dev/null || true
+fi
+
+if [ -n "$API_KEY_ID" ] && [ "$API_KEY_ID" != "None" ]; then
+    aws apigateway delete-api-key --api-key "$API_KEY_ID" --region "$AWS_REGION" 2>/dev/null || true
+    echo "API Key deleted: $API_KEY_NAME"
+fi
+
+if [ -n "$USAGE_PLAN_ID" ] && [ "$USAGE_PLAN_ID" != "None" ]; then
+    aws apigateway delete-usage-plan --usage-plan-id "$USAGE_PLAN_ID" --region "$AWS_REGION" 2>/dev/null || true
+    echo "Usage Plan deleted: $USAGE_PLAN_NAME"
+fi
+
+# === .api-key file ===
+rm -f "$SCRIPT_DIR/.api-key" 2>/dev/null || true
+echo ".api-key file removed."
+
 echo ""
 echo "=== LIMPEZA CONCLUIDA PARA SUFFIX: $RESOURCE_SUFFIX ==="
