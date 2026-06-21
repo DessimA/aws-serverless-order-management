@@ -814,3 +814,63 @@ sequenceDiagram
 **Validacao:** Teste 2 (S3 File Upload) passa a utilizar os nomes de campos corretos.
 
 ---
+
+## Rodada 7
+
+### 1. [CRITICA] Resource Policy do API Gateway bloqueia endpoints publicos quando ALLOWED_SOURCE_IP esta definido
+
+**Localizacao:** `scripts/lib.sh`, funcao `ensure_api_resource_policy`
+
+**Problema:** Resource Policies do API Gateway seguem modelo deny-by-default. A politica anterior continha apenas uma declaracao Allow restrita a `*/*/POST/test` condicionada por IpAddress. Isso significava que, assim que ALLOWED_SOURCE_IP era definido no .env, POST /orders e GET /orders/{orderId} deixavam de ter qualquer declaracao que os permitisse e passavam a ser bloqueados, contradizendo o SECURITY.md, que define essas rotas como authorization-type: NONE e de acesso publico.
+
+**Correcao:** A politica foi alterada para o padrao Allow geral + Deny condicional:
+- Primeira declaracao: Allow irrestrito para `arn:aws:execute-api:$region:*:$api_id/*` (cobre toda a API).
+- Segunda declaracao: Deny com NotIpAddress restrito a `arn:aws:execute-api:$region:*:$api_id/*/POST/test`.
+Quando ALLOWED_SOURCE_IP esta vazio, nenhuma politica e aplicada (comportamento inalterado).
+
+**Justificativa:** Deny sempre tem precedencia sobre Allow na avaliacao de Resource Policies. O padrao Allow geral mais Deny condicional e o unico que permite restringir seletivamente uma rota (/test) sem bloquear as demais (/orders, /orders/{orderId}). O padrao anterior (Allow-only) funcionava apenas quando todas as rotas precisavam da mesma restricao.
+
+**Validacao:**
+- Teste 15 em `validate-flow.sh`: validacao estrutural automatizada que verifica:
+  - Existencia de declaracao Allow com Resource terminando em `/*` (sem `/POST/test`).
+  - Existencia de declaracao Deny com Resource `/POST/test` e Condition NotIpAddress.
+  - SKIP se ALLOWED_SOURCE_IP vazio (sem quebrar o pipeline).
+- Teste funcional manual: com ALLOWED_SOURCE_IP definido, POST /orders e GET /orders/{orderId} continuam acessiveis de qualquer IP; POST /test so responde do IP configurado.
+
+**Fluxo de avaliacao da Resource Policy:**
+
+```mermaid
+flowchart TD
+    subgraph "ANTES (Allow-only com IpAddress)"
+        A1["Request para qualquer rota"] --> B1{"Policy tem declaracao Allow<br/>que cobre esta rota<br/>E condicao IP e satisfeita?"}
+        B1 -->|"Sim (apenas /test do IP correto)"| C1["200 OK"]
+        B1 -->|"Nao (demais rotas ou IP diferente)"| D1["403 Forbidden (deny-by-default)"]
+    end
+
+    subgraph "DEPOIS (Allow geral + Deny condicional)"
+        A2["Request para qualquer rota"] --> B2{"Declaracao Deny cobre esta rota<br/>E condicao IP e violada?"}
+        B2 -->|"Sim (/test de IP nao autorizado)"| C2["403 Forbidden"]
+        B2 -->|"Nao (qualquer rota ou IP autorizado)"| D2["200 OK (Allow geral)"]
+    end
+
+    style D1 fill:#ffcccc
+    style C1 fill:#ccffcc
+    style C2 fill:#ffcccc
+    style D2 fill:#ccffcc
+```
+
+### 2. [MEDIA] Inconsistencia no uso do modulo common.sqs
+
+**Localizacao:** `src/order_validator/index.py` e `src/batch_processor/index.py`
+
+**Problema:** Ambas as Lambdas chamavam `json.loads(record['body'])` diretamente em vez de usar `common.sqs.parse_body()`. Funcionalmente estava correto (nenhuma das duas filas recebe envelope detail do EventBridge), mas quebrava a convencao adotada no restante do projeto, onde toda leitura de body de mensagem SQS passa por `common.sqs.parse_body()`.
+
+**Correcao:**
+- Em `src/order_validator/index.py`: adicionado `from common.sqs import parse_body` e substituido `json.loads(record['body'])` por `parse_body(record)`.
+- Em `src/batch_processor/index.py`: mesmo padrao, `json.loads(record['body'])` substituido por `parse_body(record)`.
+
+**Justificativa:** `parse_body()` trata tanto string JSON quanto dict, preservando o resultado atual para esses dois casos de uso. Centralizar a leitura de body em uma unica funcao garante consistencia e facilita manutencao futura (por exemplo, se o formato do envelope SQS mudar).
+
+**Validacao:** Testes 1 e 2 em `validate-flow.sh` continuam passando sem alteracao de comportamento. Nenhuma Lambda no projeto faz mais `json.loads(record['body'])` diretamente.
+
+---
