@@ -235,6 +235,9 @@ aws lambda add-permission --function-name "$CTRL_LAMBDA_NAME" --statement-id api
     --source-arn "arn:aws:execute-api:$AWS_REGION:$ACCOUNT_ID:$REST_API_ID/*/POST/test" \
     --region "$AWS_REGION"
 
+# === Resource Policy (restrito a POST /test) ===
+ensure_api_resource_policy "$REST_API_ID" "$AWS_REGION"
+
 # === Usage Plan + API Key para /test ===
 ensure_usage_plan_with_api_key "$REST_API_ID" "$AWS_REGION"
 

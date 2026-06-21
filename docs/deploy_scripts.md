@@ -77,6 +77,14 @@ Biblioteca compartilhada com 20+ funcoes utilitarias.
 
 ## Notas de validacao manual
 
+## `scripts/lib.sh` (Rodada 6)
+
+- `ensure_api_resource_policy()`: Resource ARN restrito a `*/*/POST/test` (antes cobria toda a API). Movido de `deploy-api-flow.sh` para `deploy-frontend.sh`.
+
+## `scripts/validate-flow.sh` (Rodada 6)
+
+- Teste 14: Test Controller detailType Allowlist - envia detailType invalido (`OrderCreated`) e verifica retorno 400.
+
 ### Resource Policy (Item 2)
 Para testar a restricao de IP em /test:
 1. Defina `ALLOWED_SOURCE_IP=SEU_IP/32` no .env e execute o deploy.

@@ -475,7 +475,7 @@ ensure_api_resource_policy() {
             "Effect": "Allow",
             "Principal": "*",
             "Action": "execute-api:Invoke",
-            "Resource": "arn:aws:execute-api:$region:*:$rest_api_id/*",
+            "Resource": "arn:aws:execute-api:$region:*:$rest_api_id/*/POST/test",
             "Condition": {
                 "IpAddress": {
                     "aws:SourceIp": "$allowed_ip"

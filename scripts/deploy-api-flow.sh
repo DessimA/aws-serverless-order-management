@@ -104,11 +104,6 @@ fi
 validate_not_empty "REST_API_ID" "$REST_API_ID" "REST API ID"
 
 # ================================================================
-# Resource Policy (IP Restriction)
-# ================================================================
-ensure_api_resource_policy "$REST_API_ID" "$AWS_REGION"
-
-# ================================================================
 # Request Validator (JSON Schema) for POST /orders
 # ================================================================
 
