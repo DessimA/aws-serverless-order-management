@@ -475,9 +475,15 @@ ensure_api_resource_policy() {
             "Effect": "Allow",
             "Principal": "*",
             "Action": "execute-api:Invoke",
+            "Resource": "arn:aws:execute-api:$region:*:$rest_api_id/*"
+        },
+        {
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "execute-api:Invoke",
             "Resource": "arn:aws:execute-api:$region:*:$rest_api_id/*/POST/test",
             "Condition": {
-                "IpAddress": {
+                "NotIpAddress": {
                     "aws:SourceIp": "$allowed_ip"
                 }
             }
@@ -489,7 +495,7 @@ EOF
     aws apigateway update-rest-api --rest-api-id "$rest_api_id" \
         --patch-operations "op=replace,path=/policy,value=$(echo "$policy" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))')" \
         --region "$region" >/dev/null 2>&1 || echo "AVISO: Nao foi possivel aplicar Resource Policy (pode ser necessario permissao adicional)."
-    echo "Resource Policy aplicada: apenas IP $allowed_ip pode invocar a API."
+    echo "Resource Policy aplicada: Allow geral + Deny condicional para /test (apenas IP $allowed_ip)."
 }
 
 ensure_dlq_alarm() {
