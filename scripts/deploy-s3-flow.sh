@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 source "$SCRIPT_DIR/lib.sh"
 
 load_env "$SCRIPT_DIR/../.env"
@@ -74,9 +75,19 @@ SNS_TOPIC_ARN=$(aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGIO
 validate_not_empty "SNS_TOPIC_ARN" "$SNS_TOPIC_ARN" "SNS Topic ARN"
 sns_subscribe_email "$SNS_TOPIC_ARN" "$NOTIFICATION_EMAIL" "$AWS_REGION"
 
-ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.lambda_handler" "lambda_deploy.zip" "$AWS_REGION" "$ACCOUNT_ID" "DYNAMODB_TABLE=$AUDIT_TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
+ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.lambda_handler" "lambda_deploy.zip" "$AWS_REGION" "$ACCOUNT_ID" "5" "DYNAMODB_TABLE=$AUDIT_TABLE_NAME,SNS_TOPIC_ARN=$SNS_TOPIC_ARN"
 validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE" "SNS_TOPIC_ARN"
 
 ensure_event_source_mapping "$LAMBDA_NAME" "$S3_EVENT_QUEUE_ARN" "$AWS_REGION"
+
+# === CloudWatch Alarm for DLQ ===
+ensure_dlq_alarm "dlq-alarm-s3-batch-$RESOURCE_SUFFIX" "$DLQ_NAME" "$SNS_TOPIC_ARN" "$AWS_REGION"
+
+# === TTL on Audit Table ===
+TTL_STATUS=$(aws dynamodb describe-time-to-live --table-name "$AUDIT_TABLE_NAME" --region "$AWS_REGION" --query "TimeToLiveDescription.TimeToLiveStatus" --output text 2>/dev/null || echo "DISABLED")
+if [ "$TTL_STATUS" != "ENABLED" ]; then
+    echo "Habilitando TTL na tabela $AUDIT_TABLE_NAME (atributo: expiresAt)..."
+    aws dynamodb update-time-to-live --table-name "$AUDIT_TABLE_NAME" --time-to-live-specification "Enabled=true,AttributeName=expiresAt" --region "$AWS_REGION"
+fi
 
 rm -f lambda_deploy.zip
