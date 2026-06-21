@@ -314,7 +314,7 @@ async function testLifecycle(scenario) {
     log('warn', label, 'Publicando evento no EventBridge...');
     const res = await apiFetch(TEST_ENDPOINT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': TEST_API_KEY },
         body: JSON.stringify({
             action: 'publish_event',
             detailType,
@@ -335,7 +335,7 @@ async function testCancelledUpdate() {
     log('warn', label, '1/2: Cancelando pedido...');
     let res = await apiFetch(TEST_ENDPOINT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': TEST_API_KEY },
         body: JSON.stringify({ action: 'publish_event', detailType: 'OrderCancelled', detail: { pedidoId: orderId } }),
     });
     logResponse(res.status < 400 ? 'pass' : 'fail', label + ' (cancel)', res);
@@ -346,7 +346,7 @@ async function testCancelledUpdate() {
     const mgmt = { pedidoId: orderId, novosItens: [{ sku: 'SHOULD-NOT-APPEAR', qtd: 999, preco: 1.0 }] };
     res = await apiFetch(TEST_ENDPOINT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': TEST_API_KEY },
         body: JSON.stringify({ action: 'publish_event', detailType: 'OrderUpdated', detail: mgmt }),
     });
     logResponse(res.status < 400 ? 'pass' : 'fail', label + ' (update)', res);
@@ -364,7 +364,7 @@ async function testS3(scenario) {
     if (scenario === 'list') {
         res = await apiFetch(TEST_ENDPOINT, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-api-key': TEST_API_KEY },
             body: JSON.stringify({ action: 'list_files' }),
         });
     } else if (scenario === 'valid') {
@@ -381,19 +381,19 @@ async function testS3(scenario) {
         const content = JSON.stringify({ lista_pedidos: pedidos, total: pedidos.length });
         res = await apiFetch(TEST_ENDPOINT, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-api-key': TEST_API_KEY },
             body: JSON.stringify({ action: 'upload_file', filename: 'lote_' + Date.now() + '.json', content }),
         });
     } else if (scenario === 'invalid-schema') {
         res = await apiFetch(TEST_ENDPOINT, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-api-key': TEST_API_KEY },
             body: JSON.stringify({ action: 'upload_file', filename: 'invalido_' + Date.now() + '.json', content: JSON.stringify({ sem_lista: true }) }),
         });
     } else if (scenario === 'corrupt') {
         res = await apiFetch(TEST_ENDPOINT, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-api-key': TEST_API_KEY },
             body: JSON.stringify({ action: 'upload_file', filename: 'corrupto_' + Date.now() + '.txt', content: 'isto nao e json', contentType: 'text/plain' }),
         });
     }

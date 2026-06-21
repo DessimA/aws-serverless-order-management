@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 source "$SCRIPT_DIR/lib.sh"
 
 load_env "$SCRIPT_DIR/../.env"
@@ -125,17 +126,22 @@ deploy_lambda() {
         aws lambda wait function-updated-v2 --function-name "$lambda_name" --region "$AWS_REGION"
     fi
 
+    aws logs create-log-group --log-group-name "/aws/lambda/$lambda_name" --region "$AWS_REGION" 2>/dev/null || true
+    aws logs put-retention-policy --log-group-name "/aws/lambda/$lambda_name" --retention-in-days 14 --region "$AWS_REGION" 2>/dev/null || true
+
     rm -f "$zip_name"
 }
 
 deploy_lambda "$READER_LAMBDA_NAME" "$READER_ROLE_NAME" "../src/read_order" "index.lambda_handler" "lambda_deploy_reader.zip"
 aws lambda update-function-configuration --function-name "$READER_LAMBDA_NAME" \
     --timeout 60 --environment "Variables={DYNAMODB_TABLE=$PRODUCTION_TABLE}" --region "$AWS_REGION"
+aws lambda put-function-concurrency --function-name "$READER_LAMBDA_NAME" --reserved-concurrent-executions 10 --region "$AWS_REGION"
 validate_lambda_config "$READER_LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE"
 
 deploy_lambda "$CTRL_LAMBDA_NAME" "$CTRL_ROLE_NAME" "../src/test_controller" "index.lambda_handler" "lambda_deploy_ctrl.zip"
 aws lambda update-function-configuration --function-name "$CTRL_LAMBDA_NAME" \
     --timeout 60 --environment "Variables={EVENT_BUS_NAME=$EVENT_BUS_NAME,S3_BUCKET=$S3_BUCKET}" --region "$AWS_REGION"
+aws lambda put-function-concurrency --function-name "$CTRL_LAMBDA_NAME" --reserved-concurrent-executions 5 --region "$AWS_REGION"
 validate_lambda_config "$CTRL_LAMBDA_NAME" "$AWS_REGION" "EVENT_BUS_NAME" "S3_BUCKET"
 
 # ================================================================
@@ -207,10 +213,10 @@ if [ -z "$TEST_RESOURCE_ID" ] || [ "$TEST_RESOURCE_ID" == "None" ]; then
 fi
 validate_not_empty "TEST_RESOURCE_ID" "$TEST_RESOURCE_ID" "/test resource ID"
 
-# POST /test → test_controller
+# POST /test → test_controller (com API Key obrigatoria)
 if ! aws apigateway get-method --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method POST --region "$AWS_REGION" >/dev/null 2>&1; then
     aws apigateway put-method --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" \
-        --http-method POST --authorization-type "NONE" --region "$AWS_REGION"
+        --http-method POST --authorization-type "NONE" --api-key-required --region "$AWS_REGION"
 fi
 
 aws apigateway get-integration --rest-api-id "$REST_API_ID" --resource-id "$TEST_RESOURCE_ID" --http-method POST --region "$AWS_REGION" >/dev/null 2>&1 || \
@@ -228,6 +234,9 @@ aws lambda add-permission --function-name "$CTRL_LAMBDA_NAME" --statement-id api
     --action lambda:InvokeFunction --principal apigateway.amazonaws.com \
     --source-arn "arn:aws:execute-api:$AWS_REGION:$ACCOUNT_ID:$REST_API_ID/*/POST/test" \
     --region "$AWS_REGION"
+
+# === Usage Plan + API Key para /test ===
+ensure_usage_plan_with_api_key "$REST_API_ID" "$AWS_REGION"
 
 # Deploy API changes
 aws apigateway create-deployment --rest-api-id "$REST_API_ID" --stage-name prod --region "$AWS_REGION" >/dev/null
@@ -248,11 +257,14 @@ cp "$SCRIPT_DIR/../frontend/app.js" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/../frontend/config.template.js" "$BUILD_DIR/config.js"
 
 # Inject environment values
+API_KEY_VALUE=$(cat "$SCRIPT_DIR/.api-key" 2>/dev/null || echo "")
+
 sed -i "s|__API_ENDPOINT__|$API_ENDPOINT|g" "$BUILD_DIR/config.js"
 sed -i "s|__TEST_ENDPOINT__|$TEST_ENDPOINT|g" "$BUILD_DIR/config.js"
 sed -i "s|__READ_ENDPOINT__|$READ_ENDPOINT|g" "$BUILD_DIR/config.js"
 sed -i "s|__S3_BUCKET__|$S3_BUCKET|g" "$BUILD_DIR/config.js"
 sed -i "s|__AWS_REGION__|$AWS_REGION|g" "$BUILD_DIR/config.js"
+sed -i "s|__TEST_API_KEY__|$API_KEY_VALUE|g" "$BUILD_DIR/config.js"
 
 # Sync to S3
 aws s3 sync "$BUILD_DIR/" "s3://${FRONTEND_BUCKET}/" --region "$AWS_REGION" --delete
@@ -272,5 +284,6 @@ echo "Frontend URL:  $FRONTEND_URL"
 echo "API Endpoint:  $API_ENDPOINT"
 echo "Test Endpoint: $TEST_ENDPOINT"
 echo "Read Endpoint: $READ_ENDPOINT"
+echo "API Key para /test: $API_KEY_VALUE"
 echo ""
 echo "Open the frontend URL in your browser to test all flows."

@@ -3,3 +3,4 @@ const TEST_ENDPOINT = '__TEST_ENDPOINT__';
 const READ_ENDPOINT = '__READ_ENDPOINT__';
 const S3_BUCKET = '__S3_BUCKET__';
 const AWS_REGION = '__AWS_REGION__';
+const TEST_API_KEY = '__TEST_API_KEY__';
