@@ -317,12 +317,13 @@ Durante o desenvolvimento e implantação em ambientes reais da AWS ou LocalStac
 **Problema:** O comando `curl` falha com `Could not resolve host` ao tentar acessar o API Gateway localmente. </br>
 **Solução:** No ambiente LocalStack, a URL deve seguir o padrão `https://{api-id}.execute-api.localhost.localstack.cloud:4566`. O script de validação foi ajustado para detectar o ambiente e montar a URL correta.
 
-## 12. Resiliência com Dead Letter Queues (DLQ) e Report Batch Item Failures
+## 12. Resiliência com Dead Letter Queues (DLQ), Report Batch Item Failures e Monitoramento
 
 Todas as filas SQS deste projeto (Validação, Processamento, Alteração e Cancelamento) possuem uma DLQ associada.
 *   **Configuração:** `maxReceiveCount` definido como 3, `VisibilityTimeout` parametrizado (padrão: 360s).
 *   **Funcionamento:** Se uma Lambda falhar repetidamente ao processar uma mensagem (devido a erros de código ou indisponibilidade de recursos externos), a mensagem é movida para a DLQ após a terceira tentativa. Isso evita o bloqueio da fila principal.
 *   **Report Batch Item Failures:** Todas as Lambdas acionadas por SQS implementam o padrão `batchItemFailures`, retornando apenas os `messageId` que falharam. Mensagens processadas com sucesso no mesmo lote não são reprocessadas, reduzindo o impacto de falhas parciais.
+*   **Monitoramento de DLQs:** Cada DLQ possui um CloudWatch Alarm monitorando a métrica `ApproximateNumberOfMessagesVisible`. Quando mensagens acumulam na DLQ (threshold >= 1), um alarme é disparado para o tópico SNS de notificações, enviando email. São 5 alarmes ativos: validation-dlq, persister-dlq, cancel-dlq, update-dlq e s3-batch-dlq.
 *   **Nota:** Filas padrão (batch S3) também possuem DLQ.
 
 ## 13. Testing Dashboard (Frontend)
@@ -356,7 +357,17 @@ O dashboard é dividido em 4 abas, cada uma correspondendo a um fluxo do sistema
 | `read_order` | `GET /orders/{orderId}` | Consulta DynamoDB production e retorna o pedido ou 404 |
 | `test_controller` | `POST /test` | Roteia por ação (`publish_event`, `upload_file`, `list_files`) para testar lifecycle e S3 |
 
-### 13.4. Painel de Logs
+### 13.4. API Key para rota /test
+
+O endpoint `POST /test` exige uma API Key para ser acessado. A chave é gerada automaticamente durante o deploy e salva em `scripts/.api-key`. O frontend envia a chave no header `x-api-key` em todas as chamadas para `/test`.
+
+- Chamadas sem o header `x-api-key` retornam `403 Forbidden`.
+- Chamadas com a chave correta funcionam normalmente.
+- As rotas `POST /orders` e `GET /orders/{orderId}` continuam sem exigir API Key (rotas de demonstração pública do fluxo principal).
+
+O Usage Plan associado aplica throttle de 5 req/s com burst de 10 e quota de 1000 requisições por dia.
+
+### 13.5. Painel de Logs
 
 O dashboard exibe um painel lateral com logs em tempo real de cada operação, utilizando cores Bootstrap para indicar o status:
 - <span style="color:var(--bs-success-text)">**Verde**</span>: Operação bem-sucedida (status 200/201 esperado)
@@ -365,7 +376,7 @@ O dashboard exibe um painel lateral com logs em tempo real de cada operação, u
 
 Cada entrada mostra timestamp, nome do teste, status HTTP e payload completo da resposta. Os cards de resultado inline utilizam ícones `check_circle` (sucesso), `error` (erro) e `warning` (aviso) do Material Icons.
 
-### 13.5. Fluxos de Notificação SNS (E-mail)
+### 13.6. Fluxos de Notificação SNS (E-mail)
 
 | Gatilho | O que falha | Envia E-mail? |
 |---------|------------|:---:|
