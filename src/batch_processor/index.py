@@ -3,7 +3,7 @@ import os
 import boto3
 import urllib.parse
 from common.sns import publish_error
-from common.utils import utcnow_iso
+from common.utils import utcnow_iso, utcnow_plus_days_epoch, log_event
 
 s3_client = boto3.client('s3')
 audit_table = boto3.resource('dynamodb').Table(os.environ['DYNAMODB_TABLE'])
@@ -12,7 +12,8 @@ sns_client = boto3.client('sns')
 SNS_TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
 
 def lambda_handler(event, context):
-    print(f"File validation started: {json.dumps(event)}")
+    record_count = len(event.get('Records', []))
+    print(f"File validation started: {record_count} records")
     batch_item_failures = []
 
     for record in event['Records']:
@@ -33,11 +34,11 @@ def lambda_handler(event, context):
                         raise ValueError("Invalid Schema: 'lista_pedidos' key missing")
 
                     order_count = len(data['lista_pedidos'])
-                    print(f"File {key} validated successfully with {order_count} orders")
+                    log_event("batch_processor", None, f"File {key} validated successfully with {order_count} orders")
 
                 except Exception as e:
                     status, details = "ERROR", str(e)
-                    print(f"Error validating file {key}: {details}")
+                    log_event("batch_processor", None, f"Error validating file {key}: {details}")
                     publish_error(sns_client, SNS_TOPIC_ARN, f"File Validation Error: {bucket}/{key}", {
                         'file': f"s3://{bucket}/{key}",
                         'error': details
@@ -47,7 +48,8 @@ def lambda_handler(event, context):
                     'file_name': key,
                     'status': status,
                     'timestamp': utcnow_iso(),
-                    'details': details or "OK"
+                    'details': details or "OK",
+                    'expiresAt': utcnow_plus_days_epoch(90)
                 })
 
         except Exception as e:

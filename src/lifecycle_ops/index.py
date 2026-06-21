@@ -4,7 +4,7 @@ from decimal import Decimal
 from botocore.exceptions import ClientError
 from common.sqs import parse_detail
 from common.sns import publish_error
-from common.utils import utcnow_iso
+from common.utils import utcnow_iso, log_event
 
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
 sns_client = boto3.client('sns')
@@ -23,7 +23,7 @@ def _to_decimal(obj):
 
 def _process(order_id, update_expression, expression_values, expression_attribute_names=None, extra_condition=""):
     if not order_id:
-        print("Skipping record with missing pedidoId")
+        log_event("lifecycle_ops", None, "Skipping record with missing pedidoId")
         return
     names = {"#s": "status"}
     if expression_attribute_names:
@@ -56,9 +56,9 @@ def _handler(event, context, operation):
                             ":ts": utcnow_iso(),
                         },
                     )
-                    print(f"Order {order_id} marked as CANCELLED")
+                    log_event("lifecycle_ops", order_id, "Order marked as CANCELLED")
                 else:
-                    print("Skipping record with missing pedidoId")
+                    log_event("lifecycle_ops", None, "Skipping record with missing pedidoId")
             elif operation == "update":
                 new_items = payload.get("novosItens")
                 if order_id and new_items is not None and len(new_items) > 0:
@@ -74,9 +74,9 @@ def _handler(event, context, operation):
                         expression_attribute_names={"#i": "items"},
                         extra_condition="#s <> :cancelledStatus",
                     )
-                    print(f"Order {order_id} updated with new items")
+                    log_event("lifecycle_ops", order_id, "Order updated with new items")
                 else:
-                    print(f"Skipping record with missing or empty data for order {order_id}")
+                    log_event("lifecycle_ops", order_id, "Skipping record with missing or empty data")
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 if operation == "cancel":
@@ -85,7 +85,7 @@ def _handler(event, context, operation):
                 else:
                     action = "update"
                     msg = "Order does not exist or is already cancelled, update skipped."
-                print(f"Condition failed for {action}, skipping.")
+                log_event("lifecycle_ops", order_id, f"Condition failed for {action}, skipping.")
                 if SNS_TOPIC_ARN:
                     publish_error(sns_client, SNS_TOPIC_ARN, f"Order Not Found for {action}", {
                         'orderId': str(order_id),

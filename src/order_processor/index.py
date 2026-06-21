@@ -5,7 +5,7 @@ from decimal import Decimal
 from botocore.exceptions import ClientError
 from common.sqs import parse_detail, parse_body
 from common.sns import publish_error
-from common.utils import utcnow_iso
+from common.utils import utcnow_iso, log_event
 
 DYNAMODB_TABLE = os.environ['DYNAMODB_TABLE']
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
@@ -23,7 +23,8 @@ def _to_decimal(obj):
 
 
 def lambda_handler(event, context):
-    print(f"Processing event from queue: {json.dumps(event)}")
+    record_count = len(event.get('Records', []))
+    print(f"Processing {record_count} records from queue")
     batch_item_failures = []
 
     for record in event['Records']:
@@ -33,7 +34,7 @@ def lambda_handler(event, context):
 
             order_id = order_detail.get('pedidoId')
             if not order_id:
-                print(f"Skipping record with missing pedidoId")
+                log_event("order_processor", None, "Skipping record with missing pedidoId")
                 continue
 
             dynamodb_item = {
@@ -52,11 +53,11 @@ def lambda_handler(event, context):
                 Item=clean_item,
                 ConditionExpression='attribute_not_exists(orderId)'
             )
-            print(f"Order {order_id} successfully persisted in production database.")
+            log_event("order_processor", order_id, "Order successfully persisted in production database")
 
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-                print(f"Order {order_id} already exists, skipping duplicate.")
+                log_event("order_processor", order_id, "Order already exists, skipping duplicate")
                 if SNS_TOPIC_ARN:
                     publish_error(sns_client, SNS_TOPIC_ARN, "Duplicate Order Detected", {
                         'orderId': str(order_id),

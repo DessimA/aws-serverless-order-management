@@ -2,7 +2,7 @@ import json
 import os
 import boto3
 from common.sns import publish_error
-from common.utils import utcnow_iso
+from common.utils import utcnow_iso, log_event
 
 eventbridge_client = boto3.client('events')
 sns_client = boto3.client('sns')
@@ -11,7 +11,8 @@ EVENT_BUS_NAME = os.environ['EVENT_BUS_NAME']
 SNS_TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
 
 def lambda_handler(event, context):
-    print(f"Validation processing: {json.dumps(event)}")
+    record_count = len(event.get('Records', []))
+    print(f"Validation processing {record_count} records")
     batch_item_failures = []
 
     for record in event['Records']:
@@ -22,10 +23,9 @@ def lambda_handler(event, context):
             client_id = body.get('clienteId')
 
             if not order_id or not client_id:
-                error_msg = "Skipping record with missing pedidoId or clienteId"
-                print(error_msg)
+                log_event("order_validator", order_id, "Skipping record with missing pedidoId or clienteId")
                 publish_error(sns_client, SNS_TOPIC_ARN, "Order Validation Malformed Record", {
-                    'error': error_msg,
+                    'error': "Skipping record with missing pedidoId or clienteId",
                     'body': record.get('body', 'N/A')
                 })
                 continue
@@ -50,7 +50,7 @@ def lambda_handler(event, context):
             if response['FailedEntryCount'] > 0:
                 raise Exception(f"EventBridge put_events failed: {response}")
 
-            print(f"Order {order_id} validated and published to EventBridge")
+            log_event("order_validator", order_id, "Order validated and published to EventBridge")
 
         except Exception as e:
             print(f"Error processing order: {str(e)}")
