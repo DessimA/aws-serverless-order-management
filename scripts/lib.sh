@@ -639,3 +639,15 @@ EOF
     aws events put-targets --rule "$rule_name" --event-bus-name "$event_bus_name" --targets "file://${tmpfile}" --region "$region"
     rm -f "$tmpfile"
 }
+
+ensure_jwt_secret() {
+    local secret_file="$1"
+    if [ -f "$secret_file" ]; then
+        JWT_SECRET_VALUE=$(cat "$secret_file")
+        echo "JWT secret ja existe em $secret_file (preservando tokens validos)."
+    else
+        JWT_SECRET_VALUE=$(openssl rand -hex 32)
+        echo "$JWT_SECRET_VALUE" > "$secret_file"
+        echo "JWT secret gerado e salvo em $secret_file."
+    fi
+}
