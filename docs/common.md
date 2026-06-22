@@ -6,6 +6,9 @@ Modulo compartilhado com utilitarios reutilizaveis por todas as Lambdas do proje
 
 ## Arquivos
 
+### `auth.py`
+Funcoes `hash_password()`, `verify_password()`, `create_jwt()` e `decode_jwt()` para autenticacao de clientes. Implementa PBKDF2-SHA256 com salt de 16 bytes para hash de senha e JWT HS256 manual para tokens de acesso. Nao possui dependencias externas a biblioteca padrao do Python. Desenhado para ser reutilizado por outras Lambdas que precisem validar tokens.
+
 ### `sqs.py`
 Funcoes `parse_body()` e `parse_detail()` para extrair seguramente o envelope e o detail de records SQS. Trata tanto string JSON quanto dict ja parseado. `parse_body()` deve ser usado por toda Lambda que recebe mensagens SQS, independentemente de a fila ser alimentada diretamente (S3, API) ou via EventBridge, mantendo um unico ponto de leitura de body em todo o projeto.
 

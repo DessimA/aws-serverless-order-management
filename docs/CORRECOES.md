@@ -874,3 +874,139 @@ flowchart TD
 **Validacao:** Testes 1 e 2 em `validate-flow.sh` continuam passando sem alteracao de comportamento. Nenhuma Lambda no projeto faz mais `json.loads(record['body'])` diretamente.
 
 ---
+
+## Rodada 8
+
+### 1. [NOVA FUNCIONALIDADE] `src/common/auth.py` - Modulo de autenticacao
+
+**Localizacao:** `src/common/auth.py` (novo arquivo)
+
+**Problema:** O sistema nao possuia nenhuma forma de identidade de cliente. Nao era possivel cadastrar usuarios, autenticar ou proteger endpoints com JWT.
+
+**Correcao:** Criado modulo `common/auth.py` com quatro funcoes:
+- `hash_password(password)`: gera salt de 16 bytes via `os.urandom`, calcula PBKDF2-SHA256 com 200.000 iteracoes, retorna `(salt_hex, hash_hex)`.
+- `verify_password(password, salt_hex, hash_hex)`: recalcula o hash e compara com `hmac.compare_digest`.
+- `create_jwt(payload, secret, expires_in_seconds)`: monta JWT HS256 manualmente com header `{"alg":"HS256","typ":"JWT"}`, adiciona `iat` e `exp`, codifica em base64url sem padding e assina com HMAC-SHA256.
+- `decode_jwt(token, secret)`: valida assinatura com `hmac.compare_digest` e expiracao. Lanca `ValueError` se invalido ou expirado.
+
+**Justificativa:** Nenhuma dependencia externa. A conta de laboratorio nao tem Cognito, Secrets Manager nem KMS CMK. A implementacao manual com biblioteca padrao e adequada para fins educacionais e de portfolio.
+
+**Validacao:** Testes 16, 17 e 18 em `validate-flow.sh` exercem cadastro, login, consulta `/me`, duplicata (409) e senha errada (401).
+
+### 2. [NOVA FUNCIONALIDADE] `src/common/utils.py` - Funcao utcnow_plus_seconds_epoch
+
+**Localizacao:** `src/common/utils.py`
+
+**Problema:** Nao existia funcao para obter epoch timestamp em segundos a partir de agora, apenas `utcnow_plus_days_epoch` para dias.
+
+**Correcao:** Adicionada funcao `utcnow_plus_seconds_epoch(seconds)`, mesmo padrao de `utcnow_plus_days_epoch`.
+
+**Justificativa:** Necessaria para calcular `exp` de JWTs com granularidade de segundos (24h = 86400s).
+
+**Validacao:** Compartilhada via modulo common, sem necessidade de teste especifico.
+
+### 3. [NOVA FUNCIONALIDADE] Lambda `customer_auth` - Cadastro, Login e Me
+
+**Localizacao:** `src/customer_auth/index.py` (novo arquivo)
+
+**Problema:** Nao existia API de identidade de cliente. O sistema nao permitia cadastro nem autenticacao.
+
+**Correcao:** Criada Lambda com tres handlers roteados pelo campo `resource` do evento API Gateway:
+- `POST /customers/register`: cadastro com `ConditionExpression: attribute_not_exists(email)`.
+- `POST /customers/login`: autenticacao com `verify_password` e retorno de JWT (24h).
+- `GET /customers/me`: validacao de token JWT e retorno de perfil.
+
+Mensagens de erro de login sao genericas ("Invalid credentials") para prevenir enumeracao de usuarios.
+
+**Justificativa:** Segue o padrao de `lifecycle_ops/index.py` com multiplos handlers no mesmo arquivo. Usa `common.http.api_response`/`error_response` e `common.auth` para hashing e JWT, mantendo baixo acoplamento.
+
+**Validacao:** Testes 16 (registro + login + me), 17 (duplicata 409) e 18 (senha errada 401).
+
+### 4. [NOVA FUNCIONALIDADE] `ensure_jwt_secret` em `lib.sh`
+
+**Localizacao:** `scripts/lib.sh` (nova funcao)
+
+**Problema:** Nao havia gerencia de segredo JWT. O segredo precisava ser armazenado localmente e reutilizado entre deploys para preservar tokens ja emitidos.
+
+**Correcao:** Criada funcao `ensure_jwt_secret()` que:
+- Se `scripts/.jwt-secret` ja existe, le e retorna (idempotente).
+- Se nao existe, gera com `openssl rand -hex 32`, salva e retorna.
+- Define variavel global `JWT_SECRET_VALUE`.
+
+**Justificativa:** Mesmo padrao de `ensure_sqs_queue` (variavel global para retorno). Preserva tokens validos entre deploys.
+
+**Validacao:** Executada pelo `deploy-customer-auth.sh`, segredo e persistido em `.jwt-secret`.
+
+### 5. [NOVA FUNCIONALIDADE] Script `deploy-customer-auth.sh`
+
+**Localizacao:** `scripts/deploy-customer-auth.sh` (novo arquivo)
+
+**Problema:** Nao existia deploy para a infraestrutura de identidade.
+
+**Correcao:** Script seguindo a estrutura de `deploy-order-processor.sh`:
+- Cria tabela DynamoDB `customer-data-*` com chave `email` (S).
+- Cria IAM Role com permissao `dynamodb:PutItem` e `dynamodb:GetItem`.
+- Chama `ensure_jwt_secret` para obter o segredo.
+- Deploy da Lambda com `ensure_lambda_function` e `reserved_concurrency=5`.
+- Cria recursos `/customers`, `/customers/register`, `/customers/login`, `/customers/me` no API Gateway.
+- `setup_api_cors` em cada recurso.
+- `lambda add-permission` com `source-arn` especifico por metodo/recurso.
+
+**Justificativa:** Idempotente, padrao check-before-create, mesmo estilo dos demais scripts.
+
+**Validacao:** Executado como parte do `validate-flow.sh` antes do deploy-frontend.
+
+### 6. [NOVA FUNCIONALIDADE] `cleanup.sh` - Remocao de recursos de identidade
+
+**Localizacao:** `cleanup.sh`
+
+**Problema:** `cleanup.sh` nao limpava os novos recursos (tabela, Lambda, role, arquivo .jwt-secret).
+
+**Correcao:** Adicionadas secoes para:
+- Lambda `customer-auth-*` (com remocao de event source mappings e log group).
+- Role `customer-auth-role-*` (detach de policies gerenciadas, delete de inline policies, delete da role).
+- Tabela DynamoDB `customer-data-*`.
+- Arquivo `scripts/.jwt-secret`.
+
+**Justificativa:** Idempotencia completa da limpeza, seguindo o padrao existente.
+
+**Validacao:** Execucao de `cleanup.sh` seguida de `./run.sh` sem erros.
+
+### 7. [NOVA FUNCIONALIDADE] Testes 16, 17 e 18 em `validate-flow.sh`
+
+**Localizacao:** `scripts/validate-flow.sh`
+
+**Problema:** Nao havia testes automatizados para o fluxo de identidade.
+
+**Correcao:** Adicionados tres testes:
+- Teste 16: cadastro, login e consulta `/me` - verifica `clienteId` consistente entre as tres chamadas.
+- Teste 17: cadastro duplicado - verifica HTTP 409.
+- Teste 18: login com senha errada - verifica HTTP 401.
+
+**Justificativa:** Mesmo estilo dos testes existentes (curl, python3 para parse de JSON, mensagens PASS/FAIL).
+
+**Validacao:** Todos os testes passam em ambiente LocalStack.
+
+### 8. [DOCUMENTACAO] `docs/customer_auth.md`
+
+**Localizacao:** `docs/customer_auth.md` (novo arquivo)
+
+**Problema:** Nao havia documentacao do fluxo de identidade.
+
+**Correcao:** Documento seguindo o formato de `docs/lifecycle_ops.md` com secoes: Finalidade, Comportamento, Ambiente (tabela de variaveis), Decisoes de design, Fluxo completo (diagrama Mermaid sequenceDiagram), incluindo justificativa para implementacao manual de hash/JWT e note de que producao real usaria Cognito.
+
+**Validacao:** Validacao visual e referencia cruzada com `README.md` secao 4.7.
+
+### 9. [DOCUMENTACAO] Atualizacao do `README.md`
+
+**Localizacao:** `README.md`
+
+**Correcao:**
+- Secao 3: Lambdas atualizadas de 8 para 9.
+- Secao 5: arvore de diretorios inclui `customer_auth/`.
+- Secao 4: nova subsecao 4.7 Identidade do Cliente.
+- Secao 9: contagem de funcoes utilitarias de 25 para 26, tabela inclui `ensure_jwt_secret`.
+
+**Validacao:** Validacao visual e consistencia com o codigo.
+
+---

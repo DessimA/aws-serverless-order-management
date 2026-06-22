@@ -60,7 +60,7 @@ flowchart LR
 *   **Infraestrutura como Código (IaC):** Automação via Shell Scripting e AWS CLI.
 *   **Serviços AWS:**
     *   **Amazon API Gateway:** Ponto de entrada REST para integração síncrona.
-    *   **AWS Lambda:** Execução de lógica de negócio serverless (8 funções).
+    *   **AWS Lambda:** Execução de lógica de negócio serverless (9 funções).
     *   **Amazon S3:** Armazenamento de objetos para processamento em lote.
     *   **Amazon SQS:** Fila FIFO para buffer de validação; filas Standard para processamento e notificações S3.
     *   **Amazon EventBridge:** Orquestrador de eventos para desacoplamento total.
@@ -104,10 +104,20 @@ Todas as três Lambdas utilizam a função `parse_detail()` do módulo `common.s
 A Lambda `read_order` expõe um endpoint `GET /orders/{orderId}` no API Gateway existente. Ela consulta a tabela DynamoDB `order-production-data` via `GetItem` e retorna o item completo ou `404` se não encontrado. Respostas incluem headers CORS para integração com o frontend.
 
 ### 4.6. Controlador de Testes (`test_controller`)
+
 Lambda auxiliar de uso interno (rota `POST /test` do mesmo API Gateway) que orquestra três ações:
 - **`publish_event`**: Publica eventos de ciclo de vida (`OrderCancelled`/`OrderUpdated`) no EventBridge para testar os fluxos de cancelamento/atualização.
 - **`upload_file`**: Faz upload de conteúdo para o bucket S3 de dados, acionando o fluxo de validação assíncrona (`file_validator` → DynamoDB Audit + SNS).
 - **`list_files`**: Lista arquivos no bucket S3 para verificação pós-teste.
+
+### 4.7. Identidade do Cliente (`customer_auth`)
+
+A Lambda `customer_auth` gerencia cadastro, login e consulta de perfil de clientes, expondo tres endpoints no API Gateway:
+- **`POST /customers/register`**: Cadastra novo cliente com email e senha. A senha e hasheada com PBKDF2-SHA256 e salt. Retorna 409 se email ja cadastrado.
+- **`POST /customers/login`**: Autentica cliente e retorna um JWT com validade de 24 horas.
+- **`GET /customers/me`**: Retorna dados do cliente a partir de um token JWT valido (header `Authorization: Bearer <token>`).
+
+O hash de senha e a assinatura JWT sao implementados manualmente em `src/common/auth.py` usando apenas a biblioteca padrao do Python, pois a conta de laboratorio nao tem Cognito, Secrets Manager ou KMS CMK. Para detalhes, veja `docs/customer_auth.md`.
 
 ## 5. Estrutura do Projeto
 
@@ -121,7 +131,7 @@ aws-serverless-order-ingestion/
 │   │   └── feature_request.md  # Template de solicitacao de funcionalidade
 │   └── PULL_REQUEST_TEMPLATE.md # Template de Pull Request
 ├── scripts/                    # Infraestrutura como Codigo (IaC) e Deploy
-│   ├── lib.sh                  # 25 funcoes utilitarias (deploy, validacao, IAM, SQS, EventBridge)
+│   ├── lib.sh                  # 26 funcoes utilitarias (deploy, validacao, IAM, SQS, EventBridge, JWT)
 │   ├── deploy-api-flow.sh      # Provisiona API Gateway, SQS FIFO, Pre-Validator e Validator
 │   ├── deploy-s3-flow.sh       # Provisiona S3, SQS Standard, File Validator e Auditoria
 │   ├── deploy-order-processor.sh # Provisiona o Processador Central (persistencia)
@@ -136,7 +146,8 @@ aws-serverless-order-ingestion/
 │   ├── order_processor/        # Persistencia do estado inicial do pedido
 │   ├── lifecycle_ops/          # Operacoes de atualizacao e cancelamento
 │   ├── read_order/             # Leitura de pedidos (GET /orders/{id})
-│   └── test_controller/        # Controlador de testes (EventBridge + S3 upload)
+│   ├── test_controller/        # Controlador de testes (EventBridge + S3 upload)
+│   └── customer_auth/          # Autenticacao de clientes (cadastro, login, JWT)
 ├── frontend/                   # Dashboard de testes (S3 Static Website)
 │   ├── index.html              # Interface com abas para cada fluxo
 │   ├── style.css               # Tema escuro responsivo
@@ -217,7 +228,7 @@ chmod +x run.sh
 7.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
 
 ### Utilitários (scripts/lib.sh)
-Os scripts de deploy compartilham 25 funções utilitárias:
+Os scripts de deploy compartilham 26 funções utilitárias:
 
 | Função | Descrição |
 |--------|-----------|
@@ -246,6 +257,7 @@ Os scripts de deploy compartilham 25 funções utilitárias:
 | `ensure_api_resource_policy` | Aplica Resource Policy no API Gateway restringindo por IP (POST /test) |
 | `ensure_dlq_alarm` | Cria CloudWatch Alarm para DLQ com acao SNS |
 | `ensure_usage_plan_with_api_key` | Cria Usage Plan, API Key e associa ao stage prod |
+| `ensure_jwt_secret` | Gera ou le o segredo JWT de `scripts/.jwt-secret` (idempotente) |
 
 ---
 
