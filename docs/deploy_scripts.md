@@ -128,3 +128,26 @@ No fluxo "antes", o deny-by-default do API Gateway bloqueava qualquer rota nao c
 ## `scripts/validate-flow.sh` (Rodada 7)
 
 - Teste 15: Resource Policy structural validation - valida estruturalmente a politica quando ALLOWED_SOURCE_IP esta definido, verificando presenca de declaracao Allow com Resource `/*` e declaracao Deny com Resource `/POST/test` e Condition NotIpAddress. SKIP se ALLOWED_SOURCE_IP vazio.
+
+## `deploy-catalog.sh` (Rodada 9)
+
+- Cria tabela DynamoDB `course-catalog-*` com chave `cursoId` (S).
+- Cria IAM Role com permissoes `dynamodb:Scan` e `dynamodb:GetItem`.
+- Deploy da Lambda `catalog-reader-*` com `reserved_concurrency=10`.
+- Cria recursos `/catalog` e `/catalog/{cursoId}` no API Gateway.
+- `setup_api_cors` em ambos os recursos.
+- `lambda add-permission` com `source-arn` especifico (`*/GET/catalog`, `*/GET/catalog/{cursoId}`).
+- Path parameter `cursoId` configurado como obrigatorio.
+
+## `seed-catalog.sh` (Rodada 9)
+
+- Script idempotente que popula a tabela `course-catalog-*` com 11 itens.
+- Usa `put-item` sem `ConditionExpression` (upsert idempotente).
+- Um item (`GCP-PCA-001`) e inserido com `disponivel=false` para validacao de filtro.
+- Ao final, exibe contagem total de itens na tabela.
+
+## `validate-flow.sh` (Rodada 9)
+
+- Adicionada chamada a `deploy-catalog.sh` e `seed-catalog.sh` antes de `deploy-frontend.sh`.
+- Teste 19: GET /catalog - verifica que items retorna lista com count > 0 e que GCP-PCA-001 (disponivel=false) nao esta presente.
+- Teste 20: GET /catalog/{cursoId} - verifica que AWS-CP-001 retorna item completo e GCP-PCA-001 retorna 404.

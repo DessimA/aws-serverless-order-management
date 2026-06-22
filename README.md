@@ -60,7 +60,7 @@ flowchart LR
 *   **Infraestrutura como Código (IaC):** Automação via Shell Scripting e AWS CLI.
 *   **Serviços AWS:**
     *   **Amazon API Gateway:** Ponto de entrada REST para integração síncrona.
-    *   **AWS Lambda:** Execução de lógica de negócio serverless (9 funções).
+    *   **AWS Lambda:** Execução de lógica de negócio serverless (10 funções).
     *   **Amazon S3:** Armazenamento de objetos para processamento em lote.
     *   **Amazon SQS:** Fila FIFO para buffer de validação; filas Standard para processamento e notificações S3.
     *   **Amazon EventBridge:** Orquestrador de eventos para desacoplamento total.
@@ -119,6 +119,19 @@ A Lambda `customer_auth` gerencia cadastro, login e consulta de perfil de client
 
 O hash de senha e a assinatura JWT sao implementados manualmente em `src/common/auth.py` usando apenas a biblioteca padrao do Python, pois a conta de laboratorio nao tem Cognito, Secrets Manager ou KMS CMK. Para detalhes, veja `docs/customer_auth.md`.
 
+### 4.8. Catalogo de Cursos e Vouchers (`catalog_reader`)
+
+A Lambda `catalog_reader` expoe um endpoint publico de vitrine de produtos (`GET /catalog` e `GET /catalog/{cursoId}`), sem autenticacao, para que clientes possam navegar pelos cursos e vouchers antes de se cadastrar.
+
+O catalogo e armazenado na tabela DynamoDB `course-catalog-*` (chave `cursoId`). Cada item tem atributos como `nome`, `descricao`, `provider` (AWS/Azure/GCP), `tipo` (curso/voucher), `nivel`, `preco`, `duracao` e `disponivel`.
+
+- **`GET /catalog`**: Lista itens com `disponivel = true`. Itens indisponiveis nunca sao retornados.
+- **`GET /catalog/{cursoId}`**: Retorna detalhe de um item. Itens com `disponivel = false` retornam 404 (nao revelam existencia).
+
+O campo `cursoId` de cada item do catalogo e o `sku` dos itens de pedido, conectando o catalogo ao fluxo de criacao de pedidos sem acoplamento direto. O preco e serializado como numero (float) pelo `_DecimalEncoder` de `common/http.py`.
+
+Para detalhes, veja `docs/catalog_reader.md`.
+
 ## 5. Estrutura do Projeto
 
 A organização do repositório segue padrões de modularidade para facilitar a manutenção e o deploy independente de componentes:
@@ -136,6 +149,8 @@ aws-serverless-order-ingestion/
 │   ├── deploy-s3-flow.sh       # Provisiona S3, SQS Standard, File Validator e Auditoria
 │   ├── deploy-order-processor.sh # Provisiona o Processador Central (persistencia)
 │   ├── deploy-lifecycle-ops.sh # Provisiona fluxos de Alterar e Cancelar
+│   ├── deploy-catalog.sh       # Catalogo de cursos e vouchers
+│   ├── seed-catalog.sh         # Popula tabela do catalogo com dados iniciais
 │   ├── deploy-frontend.sh      # Frontend S3 + Lambdas read_order + test_controller
 │   └── validate-flow.sh        # Script automatizado de testes E2E
 ├── src/                        # Codigo-fonte das funcoes AWS Lambda
@@ -147,7 +162,8 @@ aws-serverless-order-ingestion/
 │   ├── lifecycle_ops/          # Operacoes de atualizacao e cancelamento
 │   ├── read_order/             # Leitura de pedidos (GET /orders/{id})
 │   ├── test_controller/        # Controlador de testes (EventBridge + S3 upload)
-│   └── customer_auth/          # Autenticacao de clientes (cadastro, login, JWT)
+│   ├── customer_auth/          # Autenticacao de clientes (cadastro, login, JWT)
+│   └── catalog_reader/         # Leitura do catalogo de cursos (GET /catalog)
 ├── frontend/                   # Dashboard de testes (S3 Static Website)
 │   ├── index.html              # Interface com abas para cada fluxo
 │   ├── style.css               # Tema escuro responsivo
@@ -223,9 +239,10 @@ chmod +x run.sh
 2.  **Deploy Fase 1 (API):** Cria o EventBus, SNS, SQS FIFO de validação, Lambdas `pre_validator` e `order_validator`, e API Gateway com integração CORS.
 3.  **Deploy Fase 2 (S3):** Cria o bucket de dados, a fila SQS Standard, a Lambda `file_validator`, a tabela de auditoria DynamoDB, e a notificação S3 → SQS.
 4.  **Deploy Fase 3 (Processor):** Cria a tabela DynamoDB de produção, a fila SQS FIFO de pedidos pendentes, a Lambda `order_persister`, e a regra EventBridge com `MessageGroupId`.
-5.  **Deploy Fase 4 (Lifecycle):** Cria as filas SQS FIFO e Lambdas de alteração e cancelamento, com suas respectivas regras no EventBridge.
-6.  **Deploy Fase 5 (Frontend):** Cria as Lambdas `read_order` e `test_controller`, adiciona os recursos `GET /orders/{orderId}` e `POST /test` ao API Gateway existente, cria o bucket S3 do frontend com Static Website Hosting, e faz upload dos arquivos com URLs injetadas.
-7.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
+5.  **Deploy Fase 4 (Lifecycle):** Cria as filas SQS Standard e Lambdas de alteração e cancelamento, com suas respectivas regras no EventBridge.
+6.  **Deploy Fase 5 (Catalog):** Cria a tabela DynamoDB `course-catalog-*`, a Lambda `catalog_reader`, e os endpoints `GET /catalog` e `GET /catalog/{cursoId}` no API Gateway. Popula a tabela com dados iniciais (11 cursos e vouchers).
+7.  **Deploy Fase 6 (Frontend):** Cria as Lambdas `read_order` e `test_controller`, adiciona os recursos `GET /orders/{orderId}` e `POST /test` ao API Gateway existente, cria o bucket S3 do frontend com Static Website Hosting, e faz upload dos arquivos com URLs injetadas.
+8.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
 
 ### Utilitários (scripts/lib.sh)
 Os scripts de deploy compartilham 26 funções utilitárias:
@@ -303,6 +320,15 @@ aws events put-events --entries "[{
     \"Detail\": \"{\\\"pedidoId\\\": \\\"ORD-001\\\", \\\"novosItens\\\": [{\\\"sku\\\": \\\"PROD-B\\\", \\\"qtd\\\": 2}]}\",
     \"EventBusName\": \"orders-event-bus-<seu-sufixo>\"
 }]"
+```
+
+#### Catalog (Course List)
+```bash
+# Listar cursos disponiveis
+curl -k <URL_DO_ENDPOINT>/prod/catalog
+
+# Detalhe de um curso
+curl -k <URL_DO_ENDPOINT>/prod/catalog/AWS-CP-001
 ```
 
 ## 11. Troubleshooting e Resolução de Problemas

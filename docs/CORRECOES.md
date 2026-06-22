@@ -6,7 +6,121 @@ Este documento descreve cada problema identificado, a correcao aplicada e a just
 
 ---
 
-## Sumario
+## Rodada 9
+
+### 1. [NOVA FUNCIONALIDADE] Lambda `catalog_reader` - Endpoints publicos de catalogo
+
+**Localizacao:** `src/catalog_reader/index.py` (novo arquivo)
+
+**Problema:** O sistema nao possuia catalogo de produtos. Cursos e vouchers nao eram listados em lugar nenhum, e o campo `sku` dos itens de pedido nao tinha uma tabela de referencia.
+
+**Correcao:** Criada Lambda com dois handlers roteados pelo campo `resource`:
+- `list_handler` (`GET /catalog`): scan com `FilterExpression="disponivel = :v"`, retorna 200 com `{"items": [...], "count": N}`.
+- `get_handler` (`GET /catalog/{cursoId}`): GetItem pelo `cursoId`, retorna 200 com o item ou 404 se nao encontrado ou `disponivel = false`.
+
+**Justificativa:** Mesmo padrao de `customer_auth/index.py` (roteamento por `event["resource"]`). Usa `common.http.api_response`/`error_response`. O `_DecimalEncoder` ja existente em `common/http.py` serializa `preco` como float, evitando que apareca como string.
+
+**Validacao:** Testes 19 e 20 em `validate-flow.sh`.
+
+### 2. [NOVA FUNCIONALIDADE] Script `deploy-catalog.sh`
+
+**Localizacao:** `scripts/deploy-catalog.sh` (novo arquivo)
+
+**Problema:** Nao existia deploy para a infraestrutura de catalogo.
+
+**Correcao:** Script seguindo a estrutura de `deploy-customer-auth.sh`:
+- Cria tabela DynamoDB `course-catalog-*` com chave `cursoId` (S).
+- Cria IAM Role com permissao `dynamodb:Scan` e `dynamodb:GetItem`.
+- Deploy da Lambda com `ensure_lambda_function` e `reserved_concurrency=10`.
+- Cria recursos `/catalog` e `/catalog/{cursoId}` no API Gateway.
+- `setup_api_cors`, `lambda add-permission` com `source-arn` especifico, path parameter `cursoId` obrigatorio.
+- Deploy da API ao final.
+
+**Justificativa:** Idempotente, padrao check-before-create.
+
+**Validacao:** Executado como parte do `validate-flow.sh`.
+
+### 3. [NOVA FUNCIONALIDADE] Script `seed-catalog.sh`
+
+**Localizacao:** `scripts/seed-catalog.sh` (novo arquivo)
+
+**Problema:** Nao existiam dados iniciais no catalogo.
+
+**Correcao:** Script que insere 11 itens na tabela `course-catalog-*` via `put-item` com JSON inline (formato DynamoDB). Itens incluem cursos AWS (5), vouchers AWS (2), cursos Azure (2) e cursos GCP (2). O item `GCP-PCA-001` tem `disponivel=false` para validacao de filtro.
+
+**Justificativa:** Idempotente (upsert, sem ConditionExpression). JSON inline evita problemas de quoting do shell com dados contendo caracteres especiais.
+
+**Validacao:** Executado apos `deploy-catalog.sh` no `validate-flow.sh`. Rodei duas vezes sem alteracao de estado.
+
+### 4. [ATUALIZACAO] `scripts/validate-flow.sh` - Deploy do catalogo e testes 19-20
+
+**Localizacao:** `scripts/validate-flow.sh`
+
+**Problema:** Nao havia deploy do catalogo nem testes automatizados para os endpoints de vitrine.
+
+**Correcao:**
+- Adicionadas chamadas a `bash deploy-catalog.sh` e `bash seed-catalog.sh` antes de `deploy-frontend.sh`.
+- Teste 19: GET /catalog - verifica `items` e `count`, confirma que `GCP-PCA-001` (disponivel=false) nao esta presente.
+- Teste 20: GET /catalog/{cursoId} - verifica AWS-CP-001 retorna item completo, GCP-PCA-001 retorna HTTP 404.
+
+**Validacao:** Todos os testes passam (Teste 14 falha pre-existente).
+
+### 5. [ATUALIZACAO] `cleanup.sh` - Remocao de recursos do catalogo
+
+**Localizacao:** `cleanup.sh`
+
+**Problema:** `cleanup.sh` nao limpava recursos do catalogo (tabela, Lambda, role).
+
+**Correcao:** Adicionados `catalog-reader-*` ao loop de Lambdas e `catalog-reader-role-*` ao loop de IAM Roles. A tabela `course-catalog-*` foi adicionada ao loop de DynamoDB tables.
+
+**Justificativa:** Idempotencia completa da limpeza.
+
+**Validacao:** Execucao de `cleanup.sh` seguida de `./run.sh` sem erros.
+
+### 6. [DOCUMENTACAO] `docs/catalog_reader.md`
+
+**Localizacao:** `docs/catalog_reader.md` (novo arquivo)
+
+**Problema:** Nao havia documentacao do catalogo.
+
+**Correcao:** Documento com secoes: Finalidade, Comportamento (listagem e detalhe), Ambiente (tabela de variaveis), Decisoes de design (404 vs 403, endpoint publico, cursoId como sku, Decimal serializado, scan vs GSI), diagrama Mermaid de sequencia.
+
+**Validacao:** Validacao visual e referencia cruzada com README.
+
+### 7. [DOCUMENTACAO] Atualizacao do `README.md`
+
+**Localizacao:** `README.md`
+
+**Correcao:**
+- Secao 3: Lambdas atualizadas de 9 para 10.
+- Secao 5: arvore inclui `catalog_reader/` e `deploy-catalog.sh`/`seed-catalog.sh`.
+- Secao 4: nova subsecao 4.8 Catalogo de Cursos e Vouchers.
+- Secao 9: novo passo 6 (Deploy Fase 5 - Catalog), passo 7 renumerado (Frontend), passo 8 (Validacao).
+- Secao 10.3: adicionados exemplos de curl para catalog.
+
+**Validacao:** Validacao visual e consistencia com o codigo.
+
+### 8. [DOCUMENTACAO] Atualizacao de `docs/deploy_scripts.md`
+
+**Localizacao:** `docs/deploy_scripts.md`
+
+**Correcao:** Adicionadas secoes para `deploy-catalog.sh`, `seed-catalog.sh` e `validate-flow.sh` (Rodada 9).
+
+**Validacao:** Validacao visual.
+
+### 9. [CORRECAO] Seed script com JSON invalido
+
+**Localizacao:** `scripts/seed-catalog.sh`
+
+**Problema:** A funcao `put_item` original construia JSON sem quotes nos nomes dos atributos (`nome:"valor"` em vez de `"nome":{"S":"valor"}`), causando erro `ParamValidation: Invalid JSON`.
+
+**Correcao:** Substituido por chamadas diretas a `aws dynamodb put-item` com JSON inline em cada item (formato DynamoDB nativo).
+
+**Justificativa:** JSON inline evita problemas de quoting e concatenacao que a abordagem de funcao generica tinha. O script e mais longo, mas mais legivel e resistente a erros de escaping.
+
+**Validacao:** `seed-catalog.sh` insere 11 itens sem erro, `aws dynamodb scan` confirma 11 registros.
+
+---
 
 1. [Frontend - Cenario Duplicata](#1-frontend---cenario-duplicata)
 2. [Deduplicacao SQS FIFO](#2-deduplicacao-sqs-fifo)

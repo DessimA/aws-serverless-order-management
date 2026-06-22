@@ -93,7 +93,7 @@ for name in "order-validation-buffer-${RESOURCE_SUFFIX}.fifo" "order-validation-
 done
 
 # === DynamoDB Tables ===
-for name in "order-production-data-${RESOURCE_SUFFIX}" "order-batch-audit-${RESOURCE_SUFFIX}" "customer-data-${RESOURCE_SUFFIX}"; do
+for name in "order-production-data-${RESOURCE_SUFFIX}" "order-batch-audit-${RESOURCE_SUFFIX}" "customer-data-${RESOURCE_SUFFIX}" "course-catalog-${RESOURCE_SUFFIX}"; do
     if aws dynamodb describe-table --table-name "$name" --region "$AWS_REGION" >/dev/null 2>&1; then
         aws dynamodb delete-table --table-name "$name" --region "$AWS_REGION" || true
         echo "DynamoDB table deleted: $name"
