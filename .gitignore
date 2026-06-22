@@ -5,3 +5,4 @@ node_modules/
 .aws-sam/
 .DS_Store
 scripts/.api-key
+scripts/.jwt-secret

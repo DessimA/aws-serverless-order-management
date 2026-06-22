@@ -45,7 +45,7 @@ if aws events describe-event-bus --name "$BUS_NAME" --region "$AWS_REGION" >/dev
 fi
 
 # === Lambda Functions ===
-for name in "order-persister-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-${RESOURCE_SUFFIX}" "order-lifecycle-update-${RESOURCE_SUFFIX}" "order-file-validator-${RESOURCE_SUFFIX}" "order-pre-validator-${RESOURCE_SUFFIX}" "order-validator-${RESOURCE_SUFFIX}" "order-reader-${RESOURCE_SUFFIX}" "test-controller-${RESOURCE_SUFFIX}"; do
+for name in "order-persister-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-${RESOURCE_SUFFIX}" "order-lifecycle-update-${RESOURCE_SUFFIX}" "order-file-validator-${RESOURCE_SUFFIX}" "order-pre-validator-${RESOURCE_SUFFIX}" "order-validator-${RESOURCE_SUFFIX}" "order-reader-${RESOURCE_SUFFIX}" "test-controller-${RESOURCE_SUFFIX}" "customer-auth-${RESOURCE_SUFFIX}"; do
     if aws lambda get-function --function-name "$name" --region "$AWS_REGION" >/dev/null 2>&1; then
         REMAINING_LAMBDAS=$(aws lambda list-event-source-mappings --function-name "$name" --region "$AWS_REGION" --query "EventSourceMappings[].UUID" --output text 2>/dev/null || true)
         for UUID in $REMAINING_LAMBDAS; do
@@ -58,7 +58,7 @@ for name in "order-persister-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-${RESOU
 done
 
 # === IAM Roles ===
-for suffix in "order-pre-validator-role-${RESOURCE_SUFFIX}" "order-validator-role-${RESOURCE_SUFFIX}" "order-file-validator-role-${RESOURCE_SUFFIX}" "order-persister-role-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-role-${RESOURCE_SUFFIX}" "order-lifecycle-update-role-${RESOURCE_SUFFIX}" "order-reader-role-${RESOURCE_SUFFIX}" "test-controller-role-${RESOURCE_SUFFIX}"; do
+for suffix in "order-pre-validator-role-${RESOURCE_SUFFIX}" "order-validator-role-${RESOURCE_SUFFIX}" "order-file-validator-role-${RESOURCE_SUFFIX}" "order-persister-role-${RESOURCE_SUFFIX}" "order-lifecycle-cancel-role-${RESOURCE_SUFFIX}" "order-lifecycle-update-role-${RESOURCE_SUFFIX}" "order-reader-role-${RESOURCE_SUFFIX}" "test-controller-role-${RESOURCE_SUFFIX}" "customer-auth-role-${RESOURCE_SUFFIX}"; do
     ROLE_NAME="$suffix"
     if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
         ATTACHED_POLICIES=$(aws iam list-attached-role-policies --role-name "$ROLE_NAME" --query "AttachedPolicies[].PolicyArn" --output text 2>/dev/null || true)
@@ -93,7 +93,7 @@ for name in "order-validation-buffer-${RESOURCE_SUFFIX}.fifo" "order-validation-
 done
 
 # === DynamoDB Tables ===
-for name in "order-production-data-${RESOURCE_SUFFIX}" "order-batch-audit-${RESOURCE_SUFFIX}"; do
+for name in "order-production-data-${RESOURCE_SUFFIX}" "order-batch-audit-${RESOURCE_SUFFIX}" "customer-data-${RESOURCE_SUFFIX}"; do
     if aws dynamodb describe-table --table-name "$name" --region "$AWS_REGION" >/dev/null 2>&1; then
         aws dynamodb delete-table --table-name "$name" --region "$AWS_REGION" || true
         echo "DynamoDB table deleted: $name"
@@ -143,6 +143,10 @@ fi
 # === .api-key file ===
 rm -f "$SCRIPT_DIR/.api-key" 2>/dev/null || true
 echo ".api-key file removed."
+
+# === .jwt-secret file ===
+rm -f "$SCRIPT_DIR/scripts/.jwt-secret" 2>/dev/null || true
+echo ".jwt-secret file removed."
 
 echo ""
 echo "=== LIMPEZA CONCLUIDA PARA SUFFIX: $RESOURCE_SUFFIX ==="
