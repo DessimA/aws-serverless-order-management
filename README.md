@@ -60,7 +60,7 @@ flowchart LR
 *   **Infraestrutura como Código (IaC):** Automação via Shell Scripting e AWS CLI.
 *   **Serviços AWS:**
     *   **Amazon API Gateway:** Ponto de entrada REST para integração síncrona.
-    *   **AWS Lambda:** Execução de lógica de negócio serverless (10 funções).
+    *   **AWS Lambda:** Execução de lógica de negócio serverless (11 funções).
     *   **Amazon S3:** Armazenamento de objetos para processamento em lote.
     *   **Amazon SQS:** Fila FIFO para buffer de validação; filas Standard para processamento e notificações S3.
     *   **Amazon EventBridge:** Orquestrador de eventos para desacoplamento total.
@@ -132,6 +132,19 @@ O campo `cursoId` de cada item do catalogo e o `sku` dos itens de pedido, conect
 
 Para detalhes, veja `docs/catalog_reader.md`.
 
+### 4.9. Gateway de Pedidos (`order_gateway`)
+
+A Lambda `order_gateway` expoe quatro endpoints autenticados via JWT para leitura e ciclo de vida de pedidos. Substitui o `test_controller` como interface de producao para usuarios finais:
+
+- **`GET /orders`**: Lista pedidos do cliente autenticado usando o GSI `clientId-index`.
+- **`GET /orders/{orderId}`**: Retorna pedido especifico com validacao de ownership (404 se pedido de outro cliente).
+- **`POST /orders/{orderId}/cancel`**: Publica evento `OrderCancelled` no EventBridge (assincrono, retorna 202).
+- **`PATCH /orders/{orderId}`**: Publica evento `OrderUpdated` no EventBridge com novos itens (retorna 202).
+
+O cancelamento e a atualizacao sao operacoes assincronas: a Lambda publica um evento no EventBridge e o `lifecycle_ops` processa a mudanca de estado no DynamoDB. Isso reaproveita a infraestrutura de ciclo de vida existente sem altera-la.
+
+A rota `GET /orders/{orderId}` foi migrada de `read_order` para `order_gateway` para garantir validacao de ownership. A Lambda `read_order` permanece implantada mas o endpoint agora aponta para `order_gateway`. Para detalhes, veja `docs/order_gateway.md`.
+
 ## 5. Estrutura do Projeto
 
 A organização do repositório segue padrões de modularidade para facilitar a manutenção e o deploy independente de componentes:
@@ -150,6 +163,7 @@ aws-serverless-order-ingestion/
 │   ├── deploy-order-processor.sh # Provisiona o Processador Central (persistencia)
 │   ├── deploy-lifecycle-ops.sh # Provisiona fluxos de Alterar e Cancelar
 │   ├── deploy-catalog.sh       # Catalogo de cursos e vouchers
+│   ├── deploy-order-gateway.sh # Gateway de pedidos autenticado com GSI
 │   ├── seed-catalog.sh         # Popula tabela do catalogo com dados iniciais
 │   ├── deploy-frontend.sh      # Frontend S3 + Lambdas read_order + test_controller
 │   └── validate-flow.sh        # Script automatizado de testes E2E
@@ -163,7 +177,8 @@ aws-serverless-order-ingestion/
 │   ├── read_order/             # Leitura de pedidos (GET /orders/{id})
 │   ├── test_controller/        # Controlador de testes (EventBridge + S3 upload)
 │   ├── customer_auth/          # Autenticacao de clientes (cadastro, login, JWT)
-│   └── catalog_reader/         # Leitura do catalogo de cursos (GET /catalog)
+│   ├── catalog_reader/         # Leitura do catalogo de cursos (GET /catalog)
+│   └── order_gateway/          # Gateway de pedidos autenticado (CRUD com JWT)
 ├── frontend/                   # Dashboard de testes (S3 Static Website)
 │   ├── index.html              # Interface com abas para cada fluxo
 │   ├── style.css               # Tema escuro responsivo
@@ -240,9 +255,10 @@ chmod +x run.sh
 3.  **Deploy Fase 2 (S3):** Cria o bucket de dados, a fila SQS Standard, a Lambda `file_validator`, a tabela de auditoria DynamoDB, e a notificação S3 → SQS.
 4.  **Deploy Fase 3 (Processor):** Cria a tabela DynamoDB de produção, a fila SQS FIFO de pedidos pendentes, a Lambda `order_persister`, e a regra EventBridge com `MessageGroupId`.
 5.  **Deploy Fase 4 (Lifecycle):** Cria as filas SQS Standard e Lambdas de alteração e cancelamento, com suas respectivas regras no EventBridge.
-6.  **Deploy Fase 5 (Catalog):** Cria a tabela DynamoDB `course-catalog-*`, a Lambda `catalog_reader`, e os endpoints `GET /catalog` e `GET /catalog/{cursoId}` no API Gateway. Popula a tabela com dados iniciais (11 cursos e vouchers).
-7.  **Deploy Fase 6 (Frontend):** Cria as Lambdas `read_order` e `test_controller`, adiciona os recursos `GET /orders/{orderId}` e `POST /test` ao API Gateway existente, cria o bucket S3 do frontend com Static Website Hosting, e faz upload dos arquivos com URLs injetadas.
-8.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
+6.  **Deploy Fase 5 (Gateway):** Cria o GSI `clientId-index` na tabela de produção, a Lambda `order_gateway`, e os endpoints autenticados `GET /orders`, `GET /orders/{orderId}`, `PATCH /orders/{orderId}` e `POST /orders/{orderId}/cancel`. Migra a rota `GET /orders/{orderId}` de `read_order` para `order_gateway`.
+7.  **Deploy Fase 6 (Catalog):** Cria a tabela DynamoDB `course-catalog-*`, a Lambda `catalog_reader`, e os endpoints `GET /catalog` e `GET /catalog/{cursoId}` no API Gateway. Popula a tabela com dados iniciais (11 cursos e vouchers).
+8.  **Deploy Fase 7 (Frontend):** Cria as Lambdas `read_order` e `test_controller`, adiciona os recursos `GET /orders/{orderId}` e `POST /test` ao API Gateway existente, cria o bucket S3 do frontend com Static Website Hosting, e faz upload dos arquivos com URLs injetadas.
+9.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
 
 ### Utilitários (scripts/lib.sh)
 Os scripts de deploy compartilham 26 funções utilitárias:
@@ -329,6 +345,29 @@ curl -k <URL_DO_ENDPOINT>/prod/catalog
 
 # Detalhe de um curso
 curl -k <URL_DO_ENDPOINT>/prod/catalog/AWS-CP-001
+```
+
+#### Order Gateway (Autenticado)
+```bash
+# Obter token JWT
+TOKEN=$(curl -s -X POST <URL>/prod/customers/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"cliente@email.com","password":"senha"}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('token',''))")
+
+# Listar pedidos do cliente
+curl -k -H "Authorization: Bearer $TOKEN" <URL>/prod/orders
+
+# Consultar pedido especifico
+curl -k -H "Authorization: Bearer $TOKEN" <URL>/prod/orders/ORD-001
+
+# Cancelar pedido (autenticado)
+curl -k -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{}' <URL>/prod/orders/ORD-001/cancel
+
+# Atualizar pedido (autenticado)
+curl -k -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"novosItens":[{"sku":"AWS-SAA-001","qtd":1,"preco":249.90}]}' \
+  <URL>/prod/orders/ORD-001
 ```
 
 ## 11. Troubleshooting e Resolução de Problemas

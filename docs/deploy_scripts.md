@@ -151,3 +151,26 @@ No fluxo "antes", o deny-by-default do API Gateway bloqueava qualquer rota nao c
 - Adicionada chamada a `deploy-catalog.sh` e `seed-catalog.sh` antes de `deploy-frontend.sh`.
 - Teste 19: GET /catalog - verifica que items retorna lista com count > 0 e que GCP-PCA-001 (disponivel=false) nao esta presente.
 - Teste 20: GET /catalog/{cursoId} - verifica que AWS-CP-001 retorna item completo e GCP-PCA-001 retorna 404.
+
+## `deploy-order-gateway.sh` (Rodada 10)
+
+Script separado de `deploy-order-processor.sh` por tres razoes:
+- Adiciona GSI `clientId-index` na tabela de producao (operacao de update-table, sem recriacao).
+- A Lambda `order_gateway` depende de `customer_auth` (JWT secret) e de `api-flow` (EventBus).
+- A migracao de GET /orders/{orderId} de `read_order` para `order_gateway` requer remocao de permissao antiga e adicao de nova.
+
+**Dependencias verificadas no inicio:** tabela de producao, EventBus, arquivo .jwt-secret, REST API.
+
+**GSI:** Se `clientId-index` nao existe, cria via `update-table` com `clientId` (HASH) e `processedAt` (RANGE), projection ALL. Polling de ate 5 minutos para status ACTIVE.
+
+**IAM Role:** `dynamodb:GetItem` e `dynamodb:Query` na tabela e no indice; `events:PutEvents` no EventBus.
+
+**Recursos API Gateway:** Cria `/orders/{orderId}/cancel`, adiciona GET/PATCH em `/orders/{orderId}` e GET em `/orders`. Remove a permissao antiga do `read_order` para a rota GET /orders/{orderId}.
+
+## `validate-flow.sh` (Rodada 10)
+
+- Adicionada chamada a `deploy-order-gateway.sh` entre `deploy-customer-auth.sh` e `deploy-catalog.sh`.
+- Teste 21: GET /orders - lista apenas pedidos do cliente autenticado.
+- Teste 22: GET /orders/{orderId} - valida dono (404 para pedido de outro cliente).
+- Teste 23: POST /orders/{orderId}/cancel - cancelamento autenticado, verifica 202 e status final CANCELLED.
+- Teste 24: PATCH /orders/{orderId} - atualizacao autenticada, verifica 202 e status final UPDATED.

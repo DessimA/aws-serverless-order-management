@@ -6,7 +6,117 @@ Este documento descreve cada problema identificado, a correcao aplicada e a just
 
 ---
 
-## Rodada 9
+## Rodada 10
+
+### 1. [NOVA FUNCIONALIDADE] GSI `clientId-index` na tabela de producao
+
+**Localizacao:** `scripts/deploy-order-gateway.sh`
+
+**Problema:** A tabela `order-production-data` nao possuia GSI por cliente. Para listar pedidos de um cliente, seria necessario scan com FilterExpression, que e ineficiente e custoso mesmo em tabelas pequenas. Nao havia isolamento de dados por cliente na camada de leitura.
+
+**Correcao:** Adicionado GSI `clientId-index` com `clientId` (HASH) e `processedAt` (RANGE), projection ALL, via `aws dynamodb update-table`. Criacaoo idempotente: verifica se o indice ja existe antes de criar. Polling de ate 5 minutos para status ACTIVE.
+
+**Justificativa:** GSI e a forma correta de isolar dados por cliente no DynamoDB. Scan com FilterExpression consumiria RCUs de todos os itens da tabela mesmo para paginacoes pequenas. O atributo `processedAt` como sort key permite ordenar pedidos por data de processamento.
+
+**Validacao:** Teste 21 em `validate-flow.sh`: listagem de pedidos do cliente autenticado via GSI retorna apenas os pedidos daquele cliente.
+
+### 2. [NOVA FUNCIONALIDADE] Lambda `order_gateway` - Endpoints autenticados de ciclo de vida
+
+**Localizacao:** `src/order_gateway/index.py` (novo arquivo)
+
+**Problema:** Cancelamento e atualizacao de pedidos so eram acessiveis via `test_controller` (POST /test, com API Key, ferramenta interna de QA). Nao havia um endpoint publico autenticado para usuarios finais executarem essas operacoes. A leitura de pedidos (GET /orders/{orderId}) nao validava ownership, permitindo que qualquer cliente lesse pedidos de outros.
+
+**Correcao:** Criada Lambda com quatro handlers, todos validando JWT antes de executar logica:
+- `list_handler` (GET /orders): query no GSI `clientId-index` com `KeyConditionExpression`.
+- `get_handler` (GET /orders/{orderId}): GetItem com validacao de ownership. Pedidos de outro cliente retornam 404.
+- `cancel_handler` (POST /orders/{orderId}/cancel): publica `OrderCancelled` no EventBridge, retorna 202.
+- `update_handler` (PATCH /orders/{orderId}): publica `OrderUpdated` no EventBridge com `novosItens`, retorna 202.
+- Pedido ja CANCELLED retorna 409 em cancel e update.
+- `_require_auth()` extrai e valida JWT, captura `ValueError` de `decode_jwt`.
+- `_get_owned_order()` valida existencia e ownership.
+
+**Justificativa:** Segue o padrao de roteamento por `event["resource"]` e `event["httpMethod"]`. Reaproveita `lifecycle_ops` sem alteracao (o processamento assincrono do estado do pedido continua sendo feito pela Lambda de ciclo de vida). Os codigos HTTP seguem principios REST: 202 para aceite de operacao assincrona, 409 para conflito de estado, 404 generico para nao revelar pedidos de outros.
+
+**Validacao:** Testes 21 a 24 em `validate-flow.sh`.
+
+### 3. [NOVA FUNCIONALIDADE] Script `deploy-order-gateway.sh`
+
+**Localizacao:** `scripts/deploy-order-gateway.sh` (novo arquivo)
+
+**Problema:** Nao existia deploy para a infraestrutura de gateway de pedidos.
+
+**Correcao:** Script separado de `deploy-order-processor.sh` com:
+- Verificacao de dependencias no inicio: tabela de producao, EventBus, arquivo .jwt-secret e REST API.
+- Criacao do GSI (item 1 acima).
+- IAM Role com permissoes para DynamoDB (GetItem/Query na tabela e no indice) e EventBridge (PutEvents).
+- Deploy da Lambda com `ensure_lambda_function` e `reserved_concurrency=10`.
+- Criacao dos recursos /orders/{orderId}/cancel e metodos no API Gateway.
+- Remocao da permissao antiga do `read_order` para GET /orders/{orderId}.
+- `lambda add-permission` com `source-arn` especifico para cada endpoint.
+
+**Justificativa:** Script separado porque a Lambda depende de recursos de rodadas anteriores (customer_auth para JWT, order-processor para tabela). Criacao de GSI e uma operacao de update na tabela existente, nao de criacao.
+
+**Validacao:** Executado como parte do `validate-flow.sh`.
+
+### 4. [ATUALIZACAO] `scripts/validate-flow.sh` - Deploy do gateway e testes 21-24
+
+**Localizacao:** `scripts/validate-flow.sh`
+
+**Problema:** Nao havia deploy do gateway de pedidos nem testes para endpoints autenticados de ciclo de vida.
+
+**Correcao:**
+- Adicionada chamada a `bash deploy-order-gateway.sh` entre `deploy-customer-auth.sh` e `deploy-catalog.sh`.
+- Teste 21: GET /orders - cria pedido com clienteId do Teste 16, lista com JWT, verifica count > 0 e pedido presente.
+- Teste 22: GET /orders/{orderId} - verifica que pedido proprio retorna 200 e pedido de outro cliente retorna 404.
+- Teste 23: POST /orders/{orderId}/cancel - verifica 202 com "Cancellation requested" e status final CANCELLED.
+- Teste 24: PATCH /orders/{orderId} - verifica 202 com "Update requested" e status final UPDATED.
+
+**Validacao:** Todos os testes passam.
+
+### 5. [ATUALIZACAO] `cleanup.sh` - Remocao de recursos do gateway
+
+**Localizacao:** `cleanup.sh`
+
+**Problema:** `cleanup.sh` nao limpava recursos do gateway (Lambda, role).
+
+**Correcao:** Adicionados `order-gateway-*` ao loop de Lambdas e `order-gateway-role-*` ao loop de IAM Roles. O GSI e removido automaticamente com a tabela `order-production-data`.
+
+**Justificativa:** Idempotencia completa da limpeza.
+
+**Validacao:** Execucao de `cleanup.sh` seguida de `./run.sh` sem erros.
+
+### 6. [DOCUMENTACAO] `docs/order_gateway.md`
+
+**Localizacao:** `docs/order_gateway.md` (novo arquivo)
+
+**Problema:** Nao havia documentacao do gateway de pedidos autenticado.
+
+**Correcao:** Documento com secoes: Finalidade, Comportamento (tabelas de codigos de retorno por handler), Ambiente, Decisoes de design (autenticacao na Lambda, 202 vs 200, 404 generico, ponte clienteId/clientId, test_controller como QA), diagramas Mermaid para os quatro fluxos.
+
+**Validacao:** Validacao visual e referencia cruzada com README.
+
+### 7. [DOCUMENTACAO] Atualizacao do `README.md`
+
+**Localizacao:** `README.md`
+
+**Correcao:**
+- Secao 3: Lambdas atualizadas de 10 para 11.
+- Secao 5: arvore inclui `order_gateway/` e `deploy-order-gateway.sh`.
+- Secao 4: nova subsecao 4.9 Gateway de Pedidos.
+- Secao 9: novo passo 6 (Deploy Fase 5 - Gateway), passos 7-9 renumerados.
+- Secao 10.3: adicionados exemplos de curl para gateway autenticado.
+
+**Validacao:** Validacao visual e consistencia com o codigo.
+
+### 8. [DOCUMENTACAO] Atualizacao de `docs/deploy_scripts.md`
+
+**Localizacao:** `docs/deploy_scripts.md`
+
+**Correcao:** Adicionadas secoes para `deploy-order-gateway.sh` e `validate-flow.sh` (Rodada 10).
+
+**Validacao:** Validacao visual.
+
+---
 
 ### 1. [NOVA FUNCIONALIDADE] Lambda `catalog_reader` - Endpoints publicos de catalogo
 
