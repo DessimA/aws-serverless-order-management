@@ -19,6 +19,7 @@ bash "$SCRIPT_DIR/deploy-api-flow.sh"
 bash "$SCRIPT_DIR/deploy-s3-flow.sh"
 bash "$SCRIPT_DIR/deploy-order-processor.sh"
 bash "$SCRIPT_DIR/deploy-lifecycle-ops.sh"
+bash "$SCRIPT_DIR/deploy-customer-auth.sh"
 bash "$SCRIPT_DIR/deploy-frontend.sh"
 
 echo ""
@@ -398,6 +399,73 @@ print(count)
         exit 1
     fi
     echo "PASS: Encontrada $DENY_COUNT declaracao(oes) Deny com Resource /POST/test e Condition NotIpAddress"
+fi
+
+# === 16. Customer Auth: Register, Login, Me ===
+echo ""
+echo "--- Test 16: Customer Register, Login and Me ---"
+
+CUSTOMER_EMAIL="teste-$(date +%s)-$$@example.com"
+CUSTOMER_PASSWORD="SenhaForte123!"
+
+REGISTER_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/customers/register")
+LOGIN_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/customers/login")
+ME_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/customers/me")
+
+REG_RESPONSE=$(curl -s -X POST "$REGISTER_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$CUSTOMER_EMAIL\",\"password\":\"$CUSTOMER_PASSWORD\"}" 2>&1 || echo "CURL_FAILED:$?")
+REG_CLIENTE_ID=$(echo "$REG_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('clienteId',''))" 2>/dev/null || echo "")
+if [ -n "$REG_CLIENTE_ID" ]; then
+    echo "PASS: Register returned clienteId $REG_CLIENTE_ID"
+else
+    echo "FAIL: Register did not return clienteId"
+    echo "  Response: $REG_RESPONSE"
+fi
+
+LOGIN_RESPONSE=$(curl -s -X POST "$LOGIN_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$CUSTOMER_EMAIL\",\"password\":\"$CUSTOMER_PASSWORD\"}" 2>&1 || echo "CURL_FAILED:$?")
+LOGIN_TOKEN=$(echo "$LOGIN_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
+LOGIN_CLIENTE_ID=$(echo "$LOGIN_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('clienteId',''))" 2>/dev/null || echo "")
+if [ -n "$LOGIN_TOKEN" ] && [ "$LOGIN_CLIENTE_ID" = "$REG_CLIENTE_ID" ]; then
+    echo "PASS: Login returned token and matching clienteId"
+else
+    echo "FAIL: Login failed or clienteId mismatch"
+    echo "  Response: $LOGIN_RESPONSE"
+fi
+
+ME_RESPONSE=$(curl -s "$ME_ENDPOINT" \
+  -H "Authorization: Bearer $LOGIN_TOKEN" 2>&1 || echo "CURL_FAILED:$?")
+ME_CLIENTE_ID=$(echo "$ME_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('clienteId',''))" 2>/dev/null || echo "")
+ME_EMAIL=$(echo "$ME_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('email',''))" 2>/dev/null || echo "")
+if [ "$ME_CLIENTE_ID" = "$REG_CLIENTE_ID" ] && [ "$ME_EMAIL" = "$CUSTOMER_EMAIL" ]; then
+    echo "PASS: Me returned matching clienteId and email"
+else
+    echo "FAIL: Me response mismatch"
+    echo "  Response: $ME_RESPONSE"
+fi
+
+echo ""
+echo "--- Test 17: Duplicate register returns 409 ---"
+DUP_REG_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$REGISTER_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$CUSTOMER_EMAIL\",\"password\":\"$CUSTOMER_PASSWORD\"}" 2>&1 || echo "CURL_FAILED")
+if [ "$DUP_REG_RESPONSE" = "409" ]; then
+    echo "PASS: Duplicate register returned 409"
+else
+    echo "FAIL: Duplicate register returned HTTP $DUP_REG_RESPONSE (expected 409)"
+fi
+
+echo ""
+echo "--- Test 18: Login with wrong password returns 401 ---"
+WRONG_LOGIN_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$LOGIN_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$CUSTOMER_EMAIL\",\"password\":\"SenhaErrada123\"}" 2>&1 || echo "CURL_FAILED")
+if [ "$WRONG_LOGIN_RESPONSE" = "401" ]; then
+    echo "PASS: Login with wrong password returned 401"
+else
+    echo "FAIL: Login with wrong password returned HTTP $WRONG_LOGIN_RESPONSE (expected 401)"
 fi
 
 # === Summary ===
