@@ -20,6 +20,8 @@ bash "$SCRIPT_DIR/deploy-s3-flow.sh"
 bash "$SCRIPT_DIR/deploy-order-processor.sh"
 bash "$SCRIPT_DIR/deploy-lifecycle-ops.sh"
 bash "$SCRIPT_DIR/deploy-customer-auth.sh"
+bash "$SCRIPT_DIR/deploy-catalog.sh"
+bash "$SCRIPT_DIR/seed-catalog.sh"
 bash "$SCRIPT_DIR/deploy-frontend.sh"
 
 echo ""
@@ -466,6 +468,55 @@ if [ "$WRONG_LOGIN_RESPONSE" = "401" ]; then
     echo "PASS: Login with wrong password returned 401"
 else
     echo "FAIL: Login with wrong password returned HTTP $WRONG_LOGIN_RESPONSE (expected 401)"
+fi
+
+# === 19. Catalog Reader: GET /catalog returns available items ===
+echo ""
+echo "--- Test 19: GET /catalog retorna cursos disponiveis ---"
+
+CATALOG_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/catalog")
+CATALOG_LIST_RESPONSE=$(curl -s "$CATALOG_ENDPOINT" 2>&1 || echo "CURL_FAILED:$?")
+
+CHECK_HAS_ITEMS=$(echo "$CATALOG_LIST_RESPONSE" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+if 'items' in data and data.get('count', 0) > 0:
+    print('OK')
+else:
+    print('FAIL')
+" 2>/dev/null || echo "FAIL")
+
+CHECK_NO_GCP_PCA=$(echo "$CATALOG_LIST_RESPONSE" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+found = any(item.get('cursoId') == 'GCP-PCA-001' for item in data.get('items', []))
+print('FAIL' if found else 'OK')
+" 2>/dev/null || echo "FAIL")
+
+if [ "$CHECK_HAS_ITEMS" = "OK" ] && [ "$CHECK_NO_GCP_PCA" = "OK" ]; then
+    echo "PASS: Catalog list returned items and GCP-PCA-001 (disponivel=false) is absent"
+else
+    echo "FAIL: Catalog list check failed (has_items=$CHECK_HAS_ITEMS, no_gcp_pca=$CHECK_NO_GCP_PCA)"
+    echo "  Response: $CATALOG_LIST_RESPONSE"
+fi
+
+# === 20. Catalog Reader: GET /catalog/{cursoId} ===
+echo ""
+echo "--- Test 20: GET /catalog/{cursoId} retorna curso ou 404 ---"
+
+CATALOG_ITEM_RESPONSE=$(curl -s "$CATALOG_ENDPOINT/AWS-CP-001" 2>&1 || echo "CURL_FAILED:$?")
+CHECK_ITEM_FOUND=$(echo "$CATALOG_ITEM_RESPONSE" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print('OK' if data.get('cursoId') == 'AWS-CP-001' else 'FAIL')
+" 2>/dev/null || echo "FAIL")
+
+UNAVAILABLE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$CATALOG_ENDPOINT/GCP-PCA-001" 2>&1 || echo "CURL_FAILED")
+
+if [ "$CHECK_ITEM_FOUND" = "OK" ] && [ "$UNAVAILABLE_HTTP_CODE" = "404" ]; then
+    echo "PASS: GET /catalog/AWS-CP-001 returned item, GET /catalog/GCP-PCA-001 returned 404"
+else
+    echo "FAIL: Catalog item check failed (item_found=$CHECK_ITEM_FOUND, unavailable_http=$UNAVAILABLE_HTTP_CODE)"
 fi
 
 # === Summary ===
