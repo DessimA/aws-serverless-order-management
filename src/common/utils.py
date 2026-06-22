@@ -11,6 +11,11 @@ def utcnow_plus_days_epoch(days):
     return int(future.timestamp())
 
 
+def utcnow_plus_seconds_epoch(seconds):
+    future = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+    return int(future.timestamp())
+
+
 def log_event(stage, pedido_id, message):
     print(json.dumps({
         "stage": stage,
