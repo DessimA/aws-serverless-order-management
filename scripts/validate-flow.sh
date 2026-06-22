@@ -20,6 +20,7 @@ bash "$SCRIPT_DIR/deploy-s3-flow.sh"
 bash "$SCRIPT_DIR/deploy-order-processor.sh"
 bash "$SCRIPT_DIR/deploy-lifecycle-ops.sh"
 bash "$SCRIPT_DIR/deploy-customer-auth.sh"
+bash "$SCRIPT_DIR/deploy-order-gateway.sh"
 bash "$SCRIPT_DIR/deploy-catalog.sh"
 bash "$SCRIPT_DIR/seed-catalog.sh"
 bash "$SCRIPT_DIR/deploy-frontend.sh"
@@ -517,6 +518,138 @@ if [ "$CHECK_ITEM_FOUND" = "OK" ] && [ "$UNAVAILABLE_HTTP_CODE" = "404" ]; then
     echo "PASS: GET /catalog/AWS-CP-001 returned item, GET /catalog/GCP-PCA-001 returned 404"
 else
     echo "FAIL: Catalog item check failed (item_found=$CHECK_ITEM_FOUND, unavailable_http=$UNAVAILABLE_HTTP_CODE)"
+fi
+
+# === 21. Order Gateway: GET /orders lists only own orders ===
+echo ""
+echo "--- Test 21: GET /orders lista pedidos do cliente autenticado ---"
+
+if [ -z "${LOGIN_TOKEN:-}" ] || [ -z "${LOGIN_CLIENTE_ID:-}" ]; then
+    echo "SKIP: LOGIN_TOKEN ou LOGIN_CLIENTE_ID vazios (Teste 16 pode ter falhado)"
+else
+    GW_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders")
+    GW_ORDER_ID="ORD-GW-$(date +%s)-$$"
+    curl -s -X POST "$ENDPOINT" \
+      -H "Content-Type: application/json" \
+      -d "{\"pedidoId\":\"$GW_ORDER_ID\",\"clienteId\":\"$LOGIN_CLIENTE_ID\",\"itens\":[{\"sku\":\"AWS-CP-001\",\"qtd\":1,\"preco\":149.90}]}" >/dev/null 2>&1
+
+    poll_resource "order $GW_ORDER_ID with status PROCESSED" 12 10 \
+        "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$GW_ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'PROCESSED'" || true
+
+    LIST_RESPONSE=$(curl -s "$GW_ENDPOINT" \
+      -H "Authorization: Bearer $LOGIN_TOKEN" 2>&1 || echo "CURL_FAILED:$?")
+
+    LIST_COUNT=$(echo "$LIST_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('count',0))" 2>/dev/null || echo "0")
+    LIST_HAS_ORDER=$(echo "$LIST_RESPONSE" | python3 -c "
+import sys,json
+orders=json.load(sys.stdin).get('orders',[])
+ids=[o.get('orderId') for o in orders]
+exit(0) if '$GW_ORDER_ID' in ids else exit(1)
+" 2>/dev/null && echo "OK" || echo "NO")
+
+    if [ "$LIST_COUNT" -gt 0 ] && [ "$LIST_HAS_ORDER" = "OK" ]; then
+        echo "PASS: GET /orders returned count=$LIST_COUNT with order $GW_ORDER_ID present"
+    else
+        echo "FAIL: GET /orders check failed (count=$LIST_COUNT, has_order=$LIST_HAS_ORDER)"
+        echo "  Response: $LIST_RESPONSE"
+    fi
+fi
+
+# === 22. Order Gateway: GET /orders/{orderId} validates owner ===
+echo ""
+echo "--- Test 22: GET /orders/{orderId} valida dono do pedido ---"
+
+if [ -z "${LOGIN_TOKEN:-}" ] || [ -z "${LOGIN_CLIENTE_ID:-}" ]; then
+    echo "SKIP: LOGIN_TOKEN ou LOGIN_CLIENTE_ID vazios"
+else
+    OWN_ORDER_RESPONSE=$(curl -s "$GW_ENDPOINT/$GW_ORDER_ID" \
+      -H "Authorization: Bearer $LOGIN_TOKEN" 2>&1 || echo "CURL_FAILED:$?")
+    OWN_ORDER_OK=$(echo "$OWN_ORDER_RESPONSE" | python3 -c "
+import sys,json
+data=json.load(sys.stdin)
+print('OK') if data.get('orderId') == '$GW_ORDER_ID' else print('FAIL')
+" 2>/dev/null || echo "FAIL")
+
+    OTHER_ORDER_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$GW_ENDPOINT/$ORDER_ID" \
+      -H "Authorization: Bearer $LOGIN_TOKEN" 2>&1 || echo "CURL_FAILED")
+
+    if [ "$OWN_ORDER_OK" = "OK" ] && [ "$OTHER_ORDER_RESPONSE" = "404" ]; then
+        echo "PASS: Own order returned 200, other client order returned 404"
+    else
+        echo "FAIL: Owner check failed (own=$OWN_ORDER_OK, other_http=$OTHER_ORDER_RESPONSE)"
+    fi
+fi
+
+# === 23. Order Gateway: POST /orders/{orderId}/cancel (autenticado) ===
+echo ""
+echo "--- Test 23: POST /orders/{orderId}/cancel autenticado ---"
+
+if [ -z "${LOGIN_TOKEN:-}" ]; then
+    echo "SKIP: LOGIN_TOKEN vazio"
+else
+    CANCEL_RESPONSE=$(curl -s -X POST "$GW_ENDPOINT/$GW_ORDER_ID/cancel" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $LOGIN_TOKEN" \
+      -d "{}" 2>&1 || echo "CURL_FAILED:$?")
+    CANCEL_STATUS=$(echo "$CANCEL_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
+    CANCEL_HTTP=$(echo "$CANCEL_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('statusCode', 999))" 2>/dev/null || echo "999")
+
+    if [ "$CANCEL_HTTP" = "202" ] && echo "$CANCEL_STATUS" | grep -q "Cancellation requested"; then
+        echo "PASS: Cancel returned 202 with status 'Cancellation requested'"
+    else
+        echo "FAIL: Cancel response unexpected (http=$CANCEL_HTTP, status=$CANCEL_STATUS)"
+        echo "  Response: $CANCEL_RESPONSE"
+    fi
+
+    poll_resource "order $GW_ORDER_ID with status CANCELLED" 12 10 \
+        "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$GW_ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'CANCELLED'" || true
+
+    FINAL_STATUS=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$GW_ORDER_ID\"}}" --region "$AWS_REGION" --query "Item.status.S" --output text 2>/dev/null || echo "NOT_FOUND")
+    if [ "$FINAL_STATUS" = "CANCELLED" ]; then
+        echo "PASS: Order $GW_ORDER_ID final status is CANCELLED"
+    else
+        echo "FAIL: Order $GW_ORDER_ID final status is $FINAL_STATUS (expected CANCELLED)"
+    fi
+fi
+
+# === 24. Order Gateway: PATCH /orders/{orderId} (autenticado) ===
+echo ""
+echo "--- Test 24: PATCH /orders/{orderId} autenticado ---"
+
+if [ -z "${LOGIN_TOKEN:-}" ]; then
+    echo "SKIP: LOGIN_TOKEN vazio"
+else
+    GW_UPDATE_ORDER_ID="ORD-GW-UPD-$(date +%s)-$$"
+    curl -s -X POST "$ENDPOINT" \
+      -H "Content-Type: application/json" \
+      -d "{\"pedidoId\":\"$GW_UPDATE_ORDER_ID\",\"clienteId\":\"$LOGIN_CLIENTE_ID\",\"itens\":[{\"sku\":\"AWS-CP-001\",\"qtd\":1,\"preco\":149.90}]}" >/dev/null 2>&1
+
+    poll_resource "order $GW_UPDATE_ORDER_ID with status PROCESSED" 12 10 \
+        "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$GW_UPDATE_ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'PROCESSED'" || true
+
+    UPDATE_RESPONSE=$(curl -s -X PATCH "$GW_ENDPOINT/$GW_UPDATE_ORDER_ID" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $LOGIN_TOKEN" \
+      -d '{"novosItens":[{"sku":"AWS-SAA-001","qtd":1,"preco":249.90}]}' 2>&1 || echo "CURL_FAILED:$?")
+    UPDATE_STATUS=$(echo "$UPDATE_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
+    UPDATE_HTTP=$(echo "$UPDATE_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('statusCode', 999))" 2>/dev/null || echo "999")
+
+    if [ "$UPDATE_HTTP" = "202" ] && echo "$UPDATE_STATUS" | grep -q "Update requested"; then
+        echo "PASS: Update returned 202 with status 'Update requested'"
+    else
+        echo "FAIL: Update response unexpected (http=$UPDATE_HTTP, status=$UPDATE_STATUS)"
+        echo "  Response: $UPDATE_RESPONSE"
+    fi
+
+    poll_resource "order $GW_UPDATE_ORDER_ID with status UPDATED" 12 10 \
+        "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$GW_UPDATE_ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'UPDATED'" || true
+
+    UPD_FINAL_STATUS=$(aws dynamodb get-item --table-name "$PRODUCTION_TABLE" --key "{\"orderId\":{\"S\":\"$GW_UPDATE_ORDER_ID\"}}" --region "$AWS_REGION" --query "Item.status.S" --output text 2>/dev/null || echo "NOT_FOUND")
+    if [ "$UPD_FINAL_STATUS" = "UPDATED" ]; then
+        echo "PASS: Order $GW_UPDATE_ORDER_ID final status is UPDATED"
+    else
+        echo "FAIL: Order $GW_UPDATE_ORDER_ID final status is $UPD_FINAL_STATUS (expected UPDATED)"
+    fi
 fi
 
 # === Summary ===
