@@ -31,6 +31,7 @@ Este projeto e material de portfolio. Cada decisão técnica foi tomada com cons
 ## Arquitetura
 
 ```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 20, 'rankSpacing': 30, 'padding': 6}}}%%
 flowchart LR
     subgraph Cliente["Cliente Final"]
         Browser["Browser index.html"]
