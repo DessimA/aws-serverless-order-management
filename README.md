@@ -32,18 +32,10 @@ Este projeto e material de portfolio. Cada decisão técnica foi tomada com cons
 
 ```mermaid
 %%{init: {'flowchart': {'nodeSpacing': 15, 'rankSpacing': 25, 'padding': 6}}}%%
-flowchart TD
-    subgraph Cliente["Cliente Final"]
-        Browser["Browser index.html"]
-    end
-
-    subgraph QA_Ferramenta["Ferramenta QA"]
-        QA["Browser qa.html"]
-    end
-
-    subgraph S3FE["S3 Frontend"]
-        STATICSITE["S3 Static Website"]
-    end
+flowchart LR
+    Browser["Browser index.html"]:::s_cliente
+    QA["Browser qa.html"]:::s_qa
+    STATICSITE["S3 Static Website"]:::s_s3fe
 
     subgraph APIGW["API Gateway (order-ingestion-api)"]
         GW_POST["/orders POST"]
@@ -93,18 +85,14 @@ flowchart TD
         CUSTOMERS["customer-data"]
     end
 
-    subgraph EventBridge_Bus["EventBridge"]
-        EB["orders-event-bus"]
-    end
+    EB["orders-event-bus"]:::s_eb
 
     subgraph SNS_CW["SNS + CloudWatch"]
         SNS["order-notifications (email)"]
         CW["CloudWatch Alarms (5 DLQs)"]
     end
 
-    subgraph S3Dados["S3 Dados"]
-        DATABUCKET["order-files-bucket"]
-    end
+    DATABUCKET["order-files-bucket"]:::s_s3d
 
     Browser --> STATICSITE
     QA --> STATICSITE
@@ -137,20 +125,20 @@ flowchart TD
         L6["Processamento Batch S3"]:::l_batch
     end
 
-    style Cliente fill:#7986CB,color:#fff,stroke:#5C6BC0
-    style QA_Ferramenta fill:#9FA8DA,color:#fff,stroke:#7986CB
-    style S3FE fill:#5C6BC0,color:#fff,stroke:#3F51B5
     style APIGW fill:#3F51B5,color:#fff,stroke:#3949AB
     style LambdaIngestao fill:#3949AB,color:#fff,stroke:#303F9F
     style LambdaProduto fill:#303F9F,color:#fff,stroke:#283593
     style LambdaProcessamento fill:#283593,color:#fff,stroke:#1A237E
     style SQS_Filas fill:#00838F,color:#fff,stroke:#006064
     style DynamoDB_Tables fill:#1A237E,color:#fff,stroke:#283593
-    style EventBridge_Bus fill:#006064,color:#fff,stroke:#00838F
     style SNS_CW fill:#37474F,color:#fff,stroke:#455A64
-    style S3Dados fill:#283593,color:#fff,stroke:#1A237E
     style Legend fill:#F5F5F5,color:#333,stroke:#9E9E9E
 
+    classDef s_cliente fill:#7986CB,color:#fff,stroke:#5C6BC0
+    classDef s_qa fill:#9FA8DA,color:#fff,stroke:#7986CB
+    classDef s_s3fe fill:#5C6BC0,color:#fff,stroke:#3F51B5
+    classDef s_eb fill:#006064,color:#fff,stroke:#00838F
+    classDef s_s3d fill:#283593,color:#fff,stroke:#1A237E
     classDef l_http fill:#5C6BC0,color:#fff,stroke:#5C6BC0
     classDef l_ing fill:#3949AB,color:#fff,stroke:#3949AB
     classDef l_route fill:#303F9F,color:#fff,stroke:#303F9F
