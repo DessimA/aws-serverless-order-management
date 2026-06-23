@@ -32,19 +32,19 @@ Este projeto e material de portfolio. Cada decisão técnica foi tomada com cons
 
 ```mermaid
 flowchart LR
-    subgraph "Cliente Final"
+    subgraph Cliente["Cliente Final"]
         Browser["Browser index.html"]
     end
 
-    subgraph "Ferramenta QA"
+    subgraph QA_Ferramenta["Ferramenta QA"]
         QA["Browser qa.html"]
     end
 
-    subgraph "S3 Frontend"
+    subgraph S3FE["S3 Frontend"]
         STATICSITE["S3 Static Website"]
     end
 
-    subgraph "API Gateway (order-ingestion-api)"
+    subgraph APIGW["API Gateway (order-ingestion-api)"]
         GW_POST["/orders POST"]
         GW_GET["/orders GET"]
         GW_GET_ID["/orders/{id} GET"]
@@ -58,26 +58,26 @@ flowchart LR
         GW_TEST["/test POST (API Key)"]
     end
 
-    subgraph "Lambdas de Ingestao"
+    subgraph LambdaIngestao["Lambdas de Ingestao"]
         PRE["pre_validator"]
         VAL["order_validator"]
     end
 
-    subgraph "Lambdas de Produto"
+    subgraph LambdaProduto["Lambdas de Produto"]
         GWL["order_gateway"]
         CAT["catalog_reader"]
         AUTH["customer_auth"]
         CTRL["test_controller"]
     end
 
-    subgraph "Lambdas de Processamento"
+    subgraph LambdaProcessamento["Lambdas de Processamento"]
         PROC["order_processor"]
         CANCEL["lifecycle_ops (cancel)"]
         UPDATE["lifecycle_ops (update)"]
         BATCH["batch_processor"]
     end
 
-    subgraph "Filas SQS"
+    subgraph SQS_Filas["Filas SQS"]
         FIFO["order-validation-buffer (FIFO)"]
         PERSQ["order-persister-queue (Standard)"]
         CANCELQ["cancel-order-queue (Standard)"]
@@ -85,23 +85,23 @@ flowchart LR
         BATCHQUEUE["order-s3-batch-queue (Standard)"]
     end
 
-    subgraph "DynamoDB"
+    subgraph DynamoDB_Tables["DynamoDB"]
         PROD["order-production-data + GSI clientId-index"]
         AUDIT["order-batch-audit (TTL 90 dias)"]
         CATALOG["course-catalog"]
         CUSTOMERS["customer-data"]
     end
 
-    subgraph "EventBridge"
+    subgraph EventBridge_Bus["EventBridge"]
         EB["orders-event-bus"]
     end
 
-    subgraph "SNS + CloudWatch"
+    subgraph SNS_CW["SNS + CloudWatch"]
         SNS["order-notifications (email)"]
         CW["CloudWatch Alarms (5 DLQs)"]
     end
 
-    subgraph "S3 Dados"
+    subgraph S3Dados["S3 Dados"]
         DATABUCKET["order-files-bucket"]
     end
 
@@ -127,8 +127,42 @@ flowchart LR
     EB --> UPDATEQ --> UPDATE --> PROD
     DATABUCKET --> BATCHQUEUE --> BATCH --> AUDIT
 
-    PROC & CANCEL & UPDATE & VAL & BATCH --> SNS
-    CW --> SNS
+    subgraph Legend["Legenda"]
+        L1["Acesso do Cliente (HTTP)"]:::l_http
+        L2["Pipeline de Ingestao"]:::l_ing
+        L3["Roteamento para Lambdas de Dominio"]:::l_route
+        L4["Consultas e Persistencia em Dados"]:::l_data
+        L5["Processamento Orientado a Eventos"]:::l_event
+        L6["Processamento Batch S3"]:::l_batch
+    end
+
+    style Cliente fill:#1A237E,color:#fff,stroke:#0D47A1
+    style QA_Ferramenta fill:#311B92,color:#fff,stroke:#4527A0
+    style S3FE fill:#004D40,color:#fff,stroke:#00695C
+    style APIGW fill:#E65100,color:#fff,stroke:#EF6C00
+    style LambdaIngestao fill:#01579B,color:#fff,stroke:#0277BD
+    style LambdaProduto fill:#1B5E20,color:#fff,stroke:#2E7D32
+    style LambdaProcessamento fill:#0D47A1,color:#fff,stroke:#1565C0
+    style SQS_Filas fill:#3E2723,color:#fff,stroke:#4E342E
+    style DynamoDB_Tables fill:#4A148C,color:#fff,stroke:#6A1B9A
+    style EventBridge_Bus fill:#880E4F,color:#fff,stroke:#AD1457
+    style SNS_CW fill:#BF360C,color:#fff,stroke:#D84315
+    style S3Dados fill:#006064,color:#fff,stroke:#00838F
+    style Legend fill:#F5F5F5,color:#333,stroke:#9E9E9E
+
+    classDef l_http fill:#1565C0,color:#fff,stroke:#1565C0
+    classDef l_ing fill:#2E7D32,color:#fff,stroke:#2E7D32
+    classDef l_route fill:#E65100,color:#fff,stroke:#E65100
+    classDef l_data fill:#6A1B9A,color:#fff,stroke:#6A1B9A
+    classDef l_event fill:#00838F,color:#fff,stroke:#00838F
+    classDef l_batch fill:#4E342E,color:#fff,stroke:#4E342E
+
+    linkStyle 0,1,2,3,4,5,6,7,8,9,10,11,12 stroke:#1565C0,stroke-width:2px
+    linkStyle 13,14,15,16 stroke:#2E7D32,stroke-width:2px
+    linkStyle 17,18,19,20,21,22,23,24,25,26 stroke:#E65100,stroke-width:2px
+    linkStyle 27,28,29,30,31,32 stroke:#6A1B9A,stroke-width:2px
+    linkStyle 33,34,35,36,37,38,39,40,41 stroke:#00838F,stroke-width:2px
+    linkStyle 42,43,44 stroke:#4E342E,stroke-width:2px
 ```
 
 Para decisões detalhadas de design, veja [ARCHITECTURE.md](ARCHITECTURE.md).
