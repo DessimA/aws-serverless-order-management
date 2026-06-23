@@ -201,20 +201,16 @@ else
     echo "  DynamoDB result: $CANCEL_UPDATE_CHECK"
 fi
 
-# === 5. Read Order via API Gateway ===
+# === 5. Read Order via API Gateway (gateway now replaces read_order) ===
 echo ""
-echo "--- Test 5: GET /orders/{orderId} via read_order Lambda ---"
+echo "--- Test 5: GET /orders/{orderId} requires auth (gateway replaces read_order) ---"
 READ_ORDER_ID="${UPDATE_ORDER_ID:-$ORDER_ID}"
 READ_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders/${READ_ORDER_ID}")
-READ_RESPONSE=$(curl -s "$READ_ENDPOINT" 2>&1 || echo "CURL_FAILED:$?")
-if echo "$READ_RESPONSE" | grep -q "UPDATED"; then
-    echo "PASS: GET /orders/$READ_ORDER_ID returned order with status UPDATED"
-elif echo "$READ_RESPONSE" | grep -q "orderId"; then
-    echo "WARN: GET /orders/$READ_ORDER_ID returned data but without UPDATED status"
-    echo "  Response: $READ_RESPONSE"
+READ_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$READ_ENDPOINT" 2>&1 || echo "CURL_FAILED")
+if [ "$READ_HTTP_CODE" = "401" ]; then
+    echo "PASS: GET /orders/$READ_ORDER_ID returned 401 (auth required by gateway)"
 else
-    echo "FAIL: GET /orders/$READ_ORDER_ID failed"
-    echo "  Response: $READ_RESPONSE"
+    echo "FAIL: GET /orders/$READ_ORDER_ID returned HTTP $READ_HTTP_CODE (expected 401)"
 fi
 
 # === Load API Key for /test ===
@@ -587,18 +583,19 @@ echo "--- Test 23: POST /orders/{orderId}/cancel autenticado ---"
 if [ -z "${LOGIN_TOKEN:-}" ]; then
     echo "SKIP: LOGIN_TOKEN vazio"
 else
-    CANCEL_RESPONSE=$(curl -s -X POST "$GW_ENDPOINT/$GW_ORDER_ID/cancel" \
+    CANCEL_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$GW_ENDPOINT/$GW_ORDER_ID/cancel" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $LOGIN_TOKEN" \
-      -d "{}" 2>&1 || echo "CURL_FAILED:$?")
-    CANCEL_STATUS=$(echo "$CANCEL_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
-    CANCEL_HTTP=$(echo "$CANCEL_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('statusCode', 999))" 2>/dev/null || echo "999")
+      -d "{}" 2>&1 || echo "CURL_FAILED")
+    CANCEL_BODY=$(curl -s -X POST "$GW_ENDPOINT/$GW_ORDER_ID/cancel" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $LOGIN_TOKEN" \
+      -d "{}" 2>&1 || echo "CURL_FAILED")
 
-    if [ "$CANCEL_HTTP" = "202" ] && echo "$CANCEL_STATUS" | grep -q "Cancellation requested"; then
+    if [ "$CANCEL_HTTP" = "202" ] && echo "$CANCEL_BODY" | grep -q "Cancellation requested"; then
         echo "PASS: Cancel returned 202 with status 'Cancellation requested'"
     else
-        echo "FAIL: Cancel response unexpected (http=$CANCEL_HTTP, status=$CANCEL_STATUS)"
-        echo "  Response: $CANCEL_RESPONSE"
+        echo "FAIL: Cancel response unexpected (http=$CANCEL_HTTP, body=$CANCEL_BODY)"
     fi
 
     poll_resource "order $GW_ORDER_ID with status CANCELLED" 12 10 \
@@ -627,18 +624,19 @@ else
     poll_resource "order $GW_UPDATE_ORDER_ID with status PROCESSED" 12 10 \
         "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$GW_UPDATE_ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'PROCESSED'" || true
 
-    UPDATE_RESPONSE=$(curl -s -X PATCH "$GW_ENDPOINT/$GW_UPDATE_ORDER_ID" \
+    UPDATE_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GW_ENDPOINT/$GW_UPDATE_ORDER_ID" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $LOGIN_TOKEN" \
-      -d '{"novosItens":[{"sku":"AWS-SAA-001","qtd":1,"preco":249.90}]}' 2>&1 || echo "CURL_FAILED:$?")
-    UPDATE_STATUS=$(echo "$UPDATE_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
-    UPDATE_HTTP=$(echo "$UPDATE_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('statusCode', 999))" 2>/dev/null || echo "999")
+      -d '{"novosItens":[{"sku":"AWS-SAA-001","qtd":1,"preco":249.90}]}' 2>&1 || echo "CURL_FAILED")
+    UPDATE_BODY=$(curl -s -X PATCH "$GW_ENDPOINT/$GW_UPDATE_ORDER_ID" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $LOGIN_TOKEN" \
+      -d '{"novosItens":[{"sku":"AWS-SAA-001","qtd":1,"preco":249.90}]}' 2>&1 || echo "CURL_FAILED")
 
-    if [ "$UPDATE_HTTP" = "202" ] && echo "$UPDATE_STATUS" | grep -q "Update requested"; then
+    if [ "$UPDATE_HTTP" = "202" ] && echo "$UPDATE_BODY" | grep -q "Update requested"; then
         echo "PASS: Update returned 202 with status 'Update requested'"
     else
-        echo "FAIL: Update response unexpected (http=$UPDATE_HTTP, status=$UPDATE_STATUS)"
-        echo "  Response: $UPDATE_RESPONSE"
+        echo "FAIL: Update response unexpected (http=$UPDATE_HTTP, body=$UPDATE_BODY)"
     fi
 
     poll_resource "order $GW_UPDATE_ORDER_ID with status UPDATED" 12 10 \
