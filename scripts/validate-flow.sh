@@ -650,6 +650,25 @@ else
     fi
 fi
 
+# === 25. Frontend e QA Dashboard acessiveis ===
+echo ""
+echo "--- Test 25: Frontend e QA Dashboard acessiveis ---"
+
+FRONTEND_QA_URL="${FRONTEND_URL}/qa.html"
+QA_CHECK=$(curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_QA_URL" 2>&1 || echo "CURL_FAILED")
+if [ "$QA_CHECK" = "200" ]; then
+    echo "PASS: QA Dashboard $FRONTEND_QA_URL retornou HTTP 200"
+else
+    echo "WARN: QA Dashboard HTTP status: $QA_CHECK"
+fi
+
+INDEX_CHECK=$(curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" 2>&1 || echo "CURL_FAILED")
+if [ "$INDEX_CHECK" = "200" ]; then
+    echo "PASS: Frontend principal $FRONTEND_URL retornou HTTP 200"
+else
+    echo "WARN: Frontend principal HTTP status: $INDEX_CHECK"
+fi
+
 # === Summary ===
 echo ""
 echo "============================================="
@@ -663,4 +682,5 @@ echo "  - $S3_KEY (check DynamoDB table '$AUDIT_TABLE')"
 echo ""
 echo "Production table: $PRODUCTION_TABLE"
 echo "S3 bucket: order-files-bucket-$RESOURCE_SUFFIX"
-echo "Frontend URL: $FRONTEND_URL"
+echo "Frontend URL:    $FRONTEND_URL"
+echo "QA Dashboard:    ${FRONTEND_URL}/qa.html"

@@ -252,11 +252,16 @@ echo "API Gateway deployment updated."
 API_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders")
 TEST_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/test")
 READ_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders/{orderId}")
+CATALOG_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/catalog")
+ORDERS_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders")
+CUSTOMERS_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/customers")
 
 BUILD_DIR=$(mktemp -d)
 cp "$SCRIPT_DIR/../frontend/index.html" "$BUILD_DIR/"
+cp "$SCRIPT_DIR/../frontend/qa.html" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/../frontend/style.css" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/../frontend/app.js" "$BUILD_DIR/"
+cp "$SCRIPT_DIR/../frontend/qa.js" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/../frontend/config.template.js" "$BUILD_DIR/config.js"
 
 # Inject environment values
@@ -268,10 +273,15 @@ sed -i "s|__READ_ENDPOINT__|$READ_ENDPOINT|g" "$BUILD_DIR/config.js"
 sed -i "s|__S3_BUCKET__|$S3_BUCKET|g" "$BUILD_DIR/config.js"
 sed -i "s|__AWS_REGION__|$AWS_REGION|g" "$BUILD_DIR/config.js"
 sed -i "s|__TEST_API_KEY__|$API_KEY_VALUE|g" "$BUILD_DIR/config.js"
+sed -i "s|__CATALOG_ENDPOINT__|$CATALOG_ENDPOINT|g" "$BUILD_DIR/config.js"
+sed -i "s|__ORDERS_ENDPOINT__|$ORDERS_ENDPOINT|g" "$BUILD_DIR/config.js"
+sed -i "s|__CUSTOMERS_ENDPOINT__|$CUSTOMERS_ENDPOINT|g" "$BUILD_DIR/config.js"
 
 # Sync to S3
 aws s3 sync "$BUILD_DIR/" "s3://${FRONTEND_BUCKET}/" --region "$AWS_REGION" --delete
 aws s3api head-object --bucket "$FRONTEND_BUCKET" --key "index.html" --region "$AWS_REGION" >/dev/null 2>&1 || { echo "FALHA: index.html not found in frontend bucket after sync" >&2; exit 1; }
+aws s3api head-object --bucket "$FRONTEND_BUCKET" --key "qa.html" --region "$AWS_REGION" >/dev/null 2>&1 || { echo "FALHA: qa.html not found in frontend bucket after sync" >&2; exit 1; }
+aws s3api head-object --bucket "$FRONTEND_BUCKET" --key "qa.js" --region "$AWS_REGION" >/dev/null 2>&1 || { echo "FALHA: qa.js not found in frontend bucket after sync" >&2; exit 1; }
 aws s3api head-object --bucket "$FRONTEND_BUCKET" --key "config.js" --region "$AWS_REGION" >/dev/null 2>&1 || { echo "FALHA: config.js not found in frontend bucket after sync" >&2; exit 1; }
 rm -rf "$BUILD_DIR"
 
@@ -284,9 +294,13 @@ echo "============================================="
 echo " FRONTEND DEPLOY COMPLETE"
 echo "============================================="
 echo "Frontend URL:  $FRONTEND_URL"
+echo "QA Dashboard:  ${FRONTEND_URL}/qa.html"
 echo "API Endpoint:  $API_ENDPOINT"
 echo "Test Endpoint: $TEST_ENDPOINT"
 echo "Read Endpoint: $READ_ENDPOINT"
+echo "Catalog Endpoint:  $CATALOG_ENDPOINT"
+echo "Orders Endpoint:   $ORDERS_ENDPOINT"
+echo "Customers Endpoint: $CUSTOMERS_ENDPOINT"
 echo "API Key para /test: $API_KEY_VALUE"
 echo ""
 echo "Open the frontend URL in your browser to test all flows."

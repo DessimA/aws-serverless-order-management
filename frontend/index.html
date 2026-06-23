@@ -3,260 +3,185 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Management System — Dashboard</title>
+    <title>CloudCert - Cursos e Vouchers de Certificacao</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="bg-body">
+<body>
 
-    <!-- ===== HEADER ===== -->
-    <header class="border-bottom border-secondary border-opacity-25 px-3 px-md-4 py-3 d-flex align-items-center gap-3 bg-body-tertiary">
-        <h1 class="h5 mb-0">Order Management System</h1>
-        <span class="text-secondary small d-none d-sm-inline">Dashboard</span>
-        <div class="ms-auto d-flex align-items-center gap-2">
-            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 d-none" id="lastOrderBadge">
-                <span class="material-icons fs-6 align-text-bottom me-1">history</span>
-                Último: <strong id="lastOrderDisplay" class="font-monospace"></strong>
-            </span>
-            <span class="badge bg-dark text-secondary border border-secondary border-opacity-25 font-monospace small" id="envBadge"></span>
+    <!-- VIEW AUTH -->
+    <div id="view-auth">
+        <div class="container" style="max-width:420px;padding-top:12vh;">
+            <div class="text-center mb-4">
+                <span class="material-icons text-primary" style="font-size:3rem;">school</span>
+                <h2 class="h4 mt-2">CloudCert</h2>
+                <p class="text-secondary small">Cursos e Vouchers de Certificacao</p>
+            </div>
+            <div class="card border-secondary">
+                <div class="card-body p-4">
+                    <ul class="nav nav-tabs nav-justified mb-3" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="login-tab" data-bs-toggle="tab" data-bs-target="#auth-login" type="button" role="tab">Entrar</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="register-tab" data-bs-toggle="tab" data-bs-target="#auth-register" type="button" role="tab">Criar Conta</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="auth-login" role="tabpanel">
+                            <form id="login-form" onsubmit="return false;">
+                                <div class="mb-3">
+                                    <label for="login-email" class="form-label small">Email</label>
+                                    <input type="email" class="form-control" id="login-email" placeholder="seu@email.com" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="login-password" class="form-label small">Senha</label>
+                                    <input type="password" class="form-control" id="login-password" placeholder="Sua senha" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100" onclick="handleLogin()">Entrar</button>
+                            </form>
+                        </div>
+                        <div class="tab-pane fade" id="auth-register" role="tabpanel">
+                            <form id="register-form" onsubmit="return false;">
+                                <div class="mb-3">
+                                    <label for="register-email" class="form-label small">Email</label>
+                                    <input type="email" class="form-control" id="register-email" placeholder="seu@email.com" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="register-password" class="form-label small">Senha</label>
+                                    <input type="password" class="form-control" id="register-password" placeholder="Minimo 8 caracteres" required minlength="8">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="register-confirm" class="form-label small">Confirmar Senha</label>
+                                    <input type="password" class="form-control" id="register-confirm" placeholder="Repita a senha" required minlength="8">
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100" onclick="handleRegister()">Criar Conta</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div id="auth-error" class="alert alert-danger small mt-3 d-none" role="alert"></div>
+                </div>
+            </div>
         </div>
-    </header>
+    </div>
 
-    <!-- ===== BODY ===== -->
-    <div class="d-flex flex-column flex-md-row" style="min-height: calc(100vh - 62px);">
+    <!-- VIEW APP -->
+    <div id="view-app" style="display:none;">
 
-        <!-- ===== PANEL ===== -->
-        <div class="flex-fill d-flex flex-column">
-
-            <!-- Tabs -->
-            <nav class="nav nav-tabs px-3 pt-2 bg-body-tertiary border-bottom border-secondary border-opacity-25">
-                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-create" type="button">
-                    <span class="material-icons fs-6 me-1 align-text-bottom">add_shopping_cart</span>
-                    Novo Pedido
+        <!-- HEADER -->
+        <header class="border-bottom border-secondary border-opacity-25 px-3 px-md-4 py-2 d-flex align-items-center gap-3 bg-body-tertiary">
+            <span class="material-icons text-primary me-1">school</span>
+            <span class="fw-semibold">CloudCert</span>
+            <nav class="ms-3 d-flex gap-1">
+                <button class="btn btn-sm nav-btn active" data-view="catalog" onclick="showView('catalog')">
+                    <span class="material-icons fs-6 align-text-bottom me-1">store</span>Catalogo
                 </button>
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-consult" type="button">
-                    <span class="material-icons fs-6 me-1 align-text-bottom">search</span>
-                    Consultar
-                </button>
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-manage" type="button">
-                    <span class="material-icons fs-6 me-1 align-text-bottom">manage_accounts</span>
-                    Gerenciar
-                </button>
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-batch" type="button">
-                    <span class="material-icons fs-6 me-1 align-text-bottom">cloud_upload</span>
-                    Upload
+                <button class="btn btn-sm nav-btn" data-view="orders" onclick="showView('orders')">
+                    <span class="material-icons fs-6 align-text-bottom me-1">receipt_long</span>Meus Pedidos
                 </button>
             </nav>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <span class="text-secondary small d-none d-md-inline" id="user-email-display"></span>
+                <button class="btn btn-outline-secondary btn-sm" onclick="logout()">
+                    <span class="material-icons fs-6 align-text-bottom me-1">logout</span>Sair
+                </button>
+            </div>
+        </header>
 
-            <!-- Tab Content -->
-            <div class="tab-content p-3 p-md-4 flex-fill">
+        <!-- SUB-VIEW: CATALOGO -->
+        <main id="view-catalog" class="p-3 p-md-4">
+            <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+                <h2 class="h5 mb-0">Catalogo de Cursos e Vouchers</h2>
+            </div>
 
-                <!-- ===== TAB 1: NOVO PEDIDO ===== -->
-                <div class="tab-pane fade show active" id="tab-create">
-                    <h2 class="h5 mb-1">Novo Pedido</h2>
-                    <p class="text-secondary small mb-3">Crie um pedido de forma simples ou gere um automático com 1 clique.</p>
+            <div class="d-flex flex-wrap gap-2 mb-3" id="filter-provider">
+                <span class="text-secondary small me-1 align-self-center">Provedor:</span>
+                <button class="btn btn-sm filter-pill active" data-filter="provider" data-value="all">Todos</button>
+                <button class="btn btn-sm filter-pill" data-filter="provider" data-value="AWS">AWS</button>
+                <button class="btn btn-sm filter-pill" data-filter="provider" data-value="Azure">Azure</button>
+                <button class="btn btn-sm filter-pill" data-filter="provider" data-value="GCP">GCP</button>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-3" id="filter-tipo">
+                <span class="text-secondary small me-1 align-self-center">Tipo:</span>
+                <button class="btn btn-sm filter-pill active" data-filter="tipo" data-value="all">Todos</button>
+                <button class="btn btn-sm filter-pill" data-filter="tipo" data-value="curso">Curso</button>
+                <button class="btn btn-sm filter-pill" data-filter="tipo" data-value="voucher">Voucher</button>
+            </div>
 
-                    <div class="row g-3 mb-3">
-                        <div class="col-12 col-md-6">
-                            <label for="createCliente" class="form-label small">Cliente</label>
-                            <input type="text" class="form-control" id="createCliente" value="Joao Silva" placeholder="Nome do cliente">
-                        </div>
-                    </div>
-                    <div class="row g-3 mb-3">
-                        <div class="col-12 col-md-4">
-                            <label for="createProduto" class="form-label small">Produto</label>
-                            <input type="text" class="form-control" id="createProduto" value="Curso AWS Practitioner" placeholder="Nome do produto">
-                        </div>
-                        <div class="col-6 col-md-2">
-                            <label for="createQtd" class="form-label small">Qtd</label>
-                            <input type="number" class="form-control" id="createQtd" value="1" min="1">
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <label for="createPreco" class="form-label small">Preco (R$)</label>
-                            <input type="number" class="form-control" id="createPreco" value="149.90" step="0.01" min="0">
-                        </div>
-                    </div>
+            <div id="catalog-loading" class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="text-secondary small mt-2">Carregando catalogo...</p>
+            </div>
 
-                    <div class="d-flex flex-wrap gap-2 mb-2">
-                        <button class="btn btn-primary btn-lg" data-action="testAPI" id="btnCreateOrder">
-                            <span class="material-icons me-1 align-text-bottom">add_shopping_cart</span>
-                            Criar Pedido
-                        </button>
-                        <button class="btn btn-outline-secondary" data-action="testAPI" data-scenario="auto">
-                            <span class="material-icons me-1 align-text-bottom">auto_fix_high</span>
-                            Automatico
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#createErrors">
-                            <span class="material-icons fs-6 align-text-bottom me-1">bug_report</span>
-                            Cenarios de Erro
-                        </button>
-                    </div>
+            <div id="catalog-empty" class="text-center py-5 d-none">
+                <span class="material-icons fs-1 text-secondary">search_off</span>
+                <p class="text-secondary mt-2">Nenhum curso encontrado com esses filtros.</p>
+            </div>
 
-                    <div class="collapse mb-3" id="createErrors">
-                        <div class="card card-body border-secondary bg-body-tertiary py-2">
-                            <p class="small text-secondary mb-2">Teste como o sistema reage a dados invalidos.</p>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-outline-danger btn-sm" data-action="testAPI" data-scenario="missing-pedido">Faltando pedidoId</button>
-                                <button class="btn btn-outline-danger btn-sm" data-action="testAPI" data-scenario="missing-cliente">Faltando clienteId</button>
-                                <button class="btn btn-outline-danger btn-sm" data-action="testAPI" data-scenario="invalid-json">JSON Invalido</button>
-                                <button class="btn btn-outline-warning btn-sm" data-action="testAPI" data-scenario="duplicate">Enviar Duplicata</button>
-                            </div>
-                        </div>
-                    </div>
+            <div class="row g-3" id="catalog-grid"></div>
+        </main>
 
-                    <div class="card border-secondary bg-transparent" id="result-create"></div>
-                </div>
+        <!-- SUB-VIEW: MEUS PEDIDOS -->
+        <main id="view-orders" class="p-3 p-md-4" style="display:none;">
+            <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+                <h2 class="h5 mb-0">Meus Pedidos</h2>
+                <button class="btn btn-primary btn-sm" onclick="showView('catalog')">
+                    <span class="material-icons fs-6 align-text-bottom me-1">add</span>Novo Pedido
+                </button>
+            </div>
 
-                <!-- ===== TAB 2: CONSULTAR ===== -->
-                <div class="tab-pane fade" id="tab-consult">
-                    <h2 class="h5 mb-1">Consultar Pedido</h2>
-                    <p class="text-secondary small mb-3">Busque um pedido na tabela DynamoDB pelo ID.</p>
+            <div id="orders-loading" class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="text-secondary small mt-2">Carregando pedidos...</p>
+            </div>
 
+            <div id="orders-empty" class="text-center py-5 d-none">
+                <span class="material-icons fs-1 text-secondary">receipt_long</span>
+                <p class="text-secondary mt-2">Nenhum pedido encontrado.</p>
+                <button class="btn btn-primary btn-sm" onclick="showView('catalog')">
+                    <span class="material-icons fs-6 align-text-bottom me-1">add</span>Fazer primeiro pedido
+                </button>
+            </div>
+
+            <div id="orders-list"></div>
+        </main>
+
+        <!-- SUB-VIEW: DETALHE DO PEDIDO -->
+        <main id="view-order-detail" class="p-3 p-md-4" style="display:none;">
+            <button class="btn btn-sm btn-outline-secondary mb-3" onclick="showView('orders')">
+                <span class="material-icons fs-6 align-text-bottom me-1">arrow_back</span>Voltar para Meus Pedidos
+            </button>
+
+            <div id="detail-card"></div>
+
+            <div id="detail-actions" class="mt-3 d-flex gap-2">
+                <button class="btn btn-outline-danger" onclick="cancelOrder()">
+                    <span class="material-icons me-1 align-text-bottom">cancel</span>Cancelar Pedido
+                </button>
+                <button class="btn btn-outline-primary" onclick="showUpdateForm()">
+                    <span class="material-icons me-1 align-text-bottom">refresh</span>Atualizar Itens
+                </button>
+            </div>
+
+            <div id="update-form" class="card border-secondary mt-3 d-none">
+                <div class="card-body">
+                    <h6 class="card-title">Atualizar Itens</h6>
                     <div class="mb-3">
-                        <label for="readOrderId" class="form-label small">Order ID</label>
-                        <div class="input-group">
-                            <input type="text" class="form-control" id="readOrderId" placeholder="Ex: ORD-TEST-001">
-                            <button class="btn btn-primary" data-action="testRead" id="btnReadOrder">
-                                <span class="material-icons me-1 align-text-bottom">search</span>
-                                Consultar
-                            </button>
-                            <button class="btn btn-outline-secondary" data-action="testRead" data-scenario="last">
-                                <span class="material-icons me-1 align-text-bottom">history</span>
-                                Ultimo Pedido
-                            </button>
-                        </div>
+                        <label for="update-curso" class="form-label small">Curso</label>
+                        <select id="update-curso" class="form-select"></select>
                     </div>
-
-                    <div class="d-flex flex-wrap gap-2 mb-2">
-                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#consultErrors">
-                            <span class="material-icons fs-6 align-text-bottom me-1">bug_report</span>
-                            Cenarios de Erro
-                        </button>
-                    </div>
-
-                    <div class="collapse mb-3" id="consultErrors">
-                        <div class="card card-body border-secondary bg-body-tertiary py-2">
-                            <p class="small text-secondary mb-2">Teste a consulta de um pedido que nao existe.</p>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-outline-danger btn-sm" data-action="testRead" data-scenario="nonexistent">Pedido Inexistente</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card border-secondary bg-transparent" id="result-consult"></div>
-
-                    <div class="d-none mt-3" id="consult-actions">
-                        <button class="btn btn-outline-primary btn-sm" data-action="switchTab" data-scenario="manage">
-                            <span class="material-icons fs-6 align-text-bottom me-1">arrow_forward</span>
-                            Gerenciar este Pedido
-                        </button>
-                    </div>
-                </div>
-
-                <!-- ===== TAB 3: GERENCIAR ===== -->
-                <div class="tab-pane fade" id="tab-manage">
-                    <h2 class="h5 mb-1">Gerenciar Pedido</h2>
-                    <p class="text-secondary small mb-3">Cancele ou atualize um pedido existente.</p>
-
                     <div class="mb-3">
-                        <label for="lifecycleOrderId" class="form-label small">Order ID</label>
-                        <input type="text" class="form-control" id="lifecycleOrderId" placeholder="Ex: ORD-TEST-001">
+                        <label for="update-qtd" class="form-label small">Quantidade</label>
+                        <input type="number" id="update-qtd" class="form-control" value="1" min="1" max="10">
                     </div>
-
-                    <div class="row g-3 mb-3">
-                        <div class="col-12 col-md-4">
-                            <label for="mgmtProduto" class="form-label small">Novo Produto</label>
-                            <input type="text" class="form-control" id="mgmtProduto" value="Curso Azure" placeholder="Nome do produto">
-                        </div>
-                        <div class="col-6 col-md-2">
-                            <label for="mgmtQtd" class="form-label small">Qtd</label>
-                            <input type="number" class="form-control" id="mgmtQtd" value="3" min="1">
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <label for="mgmtPreco" class="form-label small">Preco (R$)</label>
-                            <input type="number" class="form-control" id="mgmtPreco" value="199.90" step="0.01" min="0">
-                        </div>
-                    </div>
-
-                    <div class="d-flex flex-wrap gap-2 mb-2">
-                        <button class="btn btn-outline-danger" data-action="testLifecycle" data-scenario="cancel">
-                            <span class="material-icons me-1 align-text-bottom">cancel</span>
-                            Cancelar Pedido
-                        </button>
-                        <button class="btn btn-outline-primary" data-action="testLifecycle" data-scenario="update">
-                            <span class="material-icons me-1 align-text-bottom">refresh</span>
-                            Atualizar Pedido
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#manageErrors">
-                            <span class="material-icons fs-6 align-text-bottom me-1">bug_report</span>
-                            Cenarios de Erro
-                        </button>
-                    </div>
-
-                    <div class="collapse mb-3" id="manageErrors">
-                        <div class="card card-body border-secondary bg-body-tertiary py-2">
-                            <p class="small text-secondary mb-2">Teste o comportamento com pedidos que nao existem.</p>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-outline-danger btn-sm" data-action="testLifecycle" data-scenario="cancel-nonexistent">Cancelar Inexistente</button>
-                                <button class="btn btn-outline-danger btn-sm" data-action="testLifecycle" data-scenario="update-nonexistent">Atualizar Inexistente</button>
-                                <button class="btn btn-outline-warning btn-sm" data-action="testCancelledUpdate">Atualizar Pedido Cancelado</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card border-secondary bg-transparent" id="result-manage"></div>
+                    <button class="btn btn-primary" onclick="submitUpdate()">Confirmar</button>
+                    <button class="btn btn-outline-secondary ms-2" onclick="showUpdateForm()">Cancelar</button>
                 </div>
-
-                <!-- ===== TAB 4: UPLOAD ===== -->
-                <div class="tab-pane fade" id="tab-batch">
-                    <h2 class="h5 mb-1">Upload em Lote</h2>
-                    <p class="text-secondary small mb-3">Gere e envie um arquivo JSON com pedidos em lote para processamento via S3.</p>
-
-                    <div class="d-flex flex-wrap gap-2 mb-2">
-                        <button class="btn btn-primary btn-lg" data-action="testS3" data-scenario="valid">
-                            <span class="material-icons me-1 align-text-bottom">cloud_upload</span>
-                            Gerar e Enviar Lote de Teste
-                        </button>
-                        <button class="btn btn-outline-secondary" data-action="testS3" data-scenario="list">
-                            <span class="material-icons me-1 align-text-bottom">folder_open</span>
-                            Listar Arquivos
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#batchErrors">
-                            <span class="material-icons fs-6 align-text-bottom me-1">bug_report</span>
-                            Cenarios de Erro
-                        </button>
-                    </div>
-
-                    <div class="collapse mb-3" id="batchErrors">
-                        <div class="card card-body border-secondary bg-body-tertiary py-2">
-                            <p class="small text-secondary mb-2">Teste o tratamento de arquivos invalidos.</p>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-outline-danger btn-sm" data-action="testS3" data-scenario="invalid-schema">Schema Invalido</button>
-                                <button class="btn btn-outline-danger btn-sm" data-action="testS3" data-scenario="corrupt">Arquivo Corrompido</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card border-secondary bg-transparent" id="result-batch"></div>
-                </div>
-
             </div>
-        </div>
 
-        <!-- ===== LOG PANEL ===== -->
-        <aside class="border-start border-secondary border-opacity-25 bg-body-tertiary" style="max-height: calc(100vh - 62px); width: 100%; max-width: 380px;">
-            <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom border-secondary border-opacity-25">
-                <h2 class="h6 mb-0">
-                    <span class="material-icons fs-6 me-1 align-text-bottom">list_alt</span>
-                    Log
-                </h2>
-                <button class="btn btn-sm btn-outline-secondary" data-action="clearLog">Limpar</button>
-            </div>
-            <div class="overflow-y-auto p-2" id="logContainer" style="max-height: calc(100vh - 110px);">
-                <p class="text-center text-secondary small py-4 mb-0 log-empty">Clique em qualquer acao para comecar.</p>
-            </div>
-        </aside>
+            <div id="detail-feedback" class="mt-2"></div>
+        </main>
 
     </div>
 

@@ -406,29 +406,46 @@ Todas as filas SQS deste projeto (Validação, Processamento, Alteração e Canc
 *   **Monitoramento de DLQs:** Cada DLQ possui um CloudWatch Alarm monitorando a métrica `ApproximateNumberOfMessagesVisible`. Quando mensagens acumulam na DLQ (threshold >= 1), um alarme é disparado para o tópico SNS de notificações, enviando email. São 5 alarmes ativos: validation-dlq, persister-dlq, cancel-dlq, update-dlq e s3-batch-dlq.
 *   **Nota:** Filas padrão (batch S3) também possuem DLQ.
 
-## 13. Testing Dashboard (Frontend)
+## 13. Frontend
 
-O sistema inclui um dashboard de testes servido como S3 Static Website, acessível pelo URL exibido ao final do `deploy-frontend.sh`. Sua finalidade é permitir a validação manual de todos os fluxos (sucesso e falha) durante o desenvolvimento.
+O bucket S3 serve dois frontends:
 
-### 13.1. Interface
+- **`index.html` (CloudCert):** Produto para usuario final com autenticacao JWT, catalogo de cursos, meus pedidos e ciclo de vida (cancelar/atualizar).
+- **`qa.html` (QA Dashboard):** Painel de QA interno, preservado das rodadas anteriores para validacao do pipeline de deploy.
 
-O dashboard é dividido em 4 abas, cada uma correspondendo a um fluxo do sistema:
+### 13.1. CloudCert (Produto)
 
-| Aba | Ações de Sucesso | Ações de Falha |
-|-----|-----------------|----------------|
-| **Novo Pedido** | Criar Pedido → pre_validator → SQS FIFO → order_validator → EventBridge → Processor → DynamoDB | Faltando pedidoId (400), Faltando clienteId (400), JSON Inválido (400), Enviar Duplicata (ConditionalCheckFailedException → alerta SNS) |
-| **Upload** | Gerar e Enviar Lote de Teste (lista_pedidos válido → DynamoDB Audit) | Schema Inválido (→ SNS Alert), Arquivo Corrompido (→ SNS Alert) |
-| **Gerenciar** | Cancelar Pedido, Atualizar Pedido (EventBridge → SQS FIFO → Lifecycle Lambda → DynamoDB) | Cancelar Inexistente, Atualizar Inexistente (ConditionalCheckFailedException → alerta SNS) |
-| **Consultar** | Consultar (GET /orders/{id} → DynamoDB) | Pedido Inexistente (404) |
-
-### 13.2. Componentes do Frontend
-
-| Arquivo | Descrição |
+| Recurso | Descricao |
 |---------|-----------|
-| `frontend/index.html` | Estrutura do dashboard com inputs, botões e painel de logs |
-| `frontend/style.css` | Tema escuro responsivo (grid de 2 colunas: painel + logs) |
-| `frontend/config.template.js` | Template com placeholders (`__API_ENDPOINT__`, etc.) processado pelo deploy |
-| `frontend/app.js` | Lógica de cada cenário de teste: chamadas fetch para API Gateway + processamento de respostas |
+| **Autenticacao** | Login e cadastro com JWT armazenado em `localStorage`. Validacao client-side de senha. |
+| **Catalogo** | Cards de curso com badges de provider (AWS/Azure/GCP) e tipo (Curso/Voucher). Filtros por provedor e tipo sem recarregar pagina. |
+| **Compra** | Botao "Comprar" em cada card -> `POST /orders` com `clienteId` do JWT -> feedback com alerta -> navegacao para "Meus Pedidos". |
+| **Meus Pedidos** | Lista ordenada por data com badge de status colorido (PROCESSED, UPDATED, CANCELLED). |
+| **Detalhe** | Card com dados do pedido, tabela de itens, botoes de cancelar e atualizar. |
+| **Cancelar** | Confirmacao -> `POST /orders/{orderId}/cancel` -> feedback assincrono -> refresh apos 3s. |
+| **Atualizar** | Form com select do catalogo -> `PATCH /orders/{orderId}` -> feedback assincrono. |
+
+### 13.2. QA Dashboard
+
+Acessivel em `/qa.html`. Dividido em 4 abas, cada uma correspondendo a um fluxo do sistema:
+
+| Aba | Acoes de Sucesso | Acoes de Falha |
+|-----|-----------------|----------------|
+| **Novo Pedido** | Criar Pedido -> pre_validator -> SQS FIFO -> order_validator -> EventBridge -> Processor -> DynamoDB | Faltando pedidoId (400), Faltando clienteId (400), JSON Invalido (400), Enviar Duplicata (ConditionalCheckFailedException -> alerta SNS) |
+| **Upload** | Gerar e Enviar Lote de Teste (lista_pedidos valido -> DynamoDB Audit) | Schema Invalido (-> SNS Alert), Arquivo Corrompido (-> SNS Alert) |
+| **Gerenciar** | Cancelar Pedido, Atualizar Pedido (EventBridge -> SQS FIFO -> Lifecycle Lambda -> DynamoDB) | Cancelar Inexistente, Atualizar Inexistente (ConditionalCheckFailedException -> alerta SNS) |
+| **Consultar** | Consultar (GET /orders/{id} -> DynamoDB) | Pedido Inexistente (404) |
+
+### 13.3. Componentes do Frontend
+
+| Arquivo | Descricao |
+|---------|-----------|
+| `frontend/index.html` | Produto CloudCert: autenticacao, catalogo, meus pedidos, detalhe. |
+| `frontend/app.js` | Logica do produto: init, auth, catalogo, pedidos, ciclo de vida. |
+| `frontend/qa.html` | Painel de QA interno (dashboard original das rodadas anteriores). |
+| `frontend/qa.js` | Logica do QA: testes de API, consulta, lifecycle, S3 batch. |
+| `frontend/style.css` | Tema escuro responsivo e estilos do produto. |
+| `frontend/config.template.js` | Template com placeholders processado pelo deploy. |
 
 ### 13.3. Novas Lambdas
 

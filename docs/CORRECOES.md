@@ -1234,3 +1234,51 @@ Mensagens de erro de login sao genericas ("Invalid credentials") para prevenir e
 **Validacao:** Validacao visual e consistencia com o codigo.
 
 ---
+
+## Rodada 11
+
+### 1. [REFACTOR] Separacao do painel QA do produto final
+
+**Localizacao:** `frontend/qa.html`, `frontend/qa.js` (novos arquivos)
+
+**Problema:** O frontend de QA (`index.html` com abas "Novo Pedido", "Consultar", "Gerenciar", "Upload") estava exposto como produto final. Interface tecnica com JSON bruto, botoes de cenario de erro e painel de logs nao era adequada para usuario final.
+
+**Correcao:** O conteudo original de `index.html` foi copiado para `qa.html` e `app.js` para `qa.js`, sem alteracoes de logica. O novo `index.html` e `app.js` implementam a interface de usuario final (CloudCert).
+
+**Justificativa:** Preservar a ferramenta de QA (usada pelo validate-flow.sh e validacao manual) sem misturar com a UX de usuario final. Separacao clara de responsabilidades.
+
+**Validacao:** Teste 25 em `validate-flow.sh`: `$FRONTEND_URL/qa.html` retorna HTTP 200 com o dashboard de QA funcional.
+
+### 2. [NOVA FUNCIONALIDADE] Frontend de usuario final
+
+**Localizacao:** `frontend/index.html`, `frontend/app.js` (novos)
+
+**Problema:** Ausencia de interface orientada ao cliente. Para usar o sistema, o usuario precisava interagir via API ou via painel de QA com JSON bruto.
+
+**Correcao:** Criado frontend completo com:
+- Tela de autenticacao (login/cadastro) com validacao client-side.
+- Catalogo de cursos com filtros por provedor (AWS/Azure/GCP) e tipo (Curso/Voucher).
+- Cards de curso com badge de provider, tipo, nivel, descricao truncada e preco.
+- Lista "Meus Pedidos" com ordenacao por data e badge de status colorido.
+- Detalhe do pedido com tabela de itens, botoes de cancelar e atualizar.
+- Formulario de atualizacao com select preenchido do catalogo.
+
+**Justificativa:** Fechar o ciclo do produto: vitrine (catalogo), checkout (POST /orders), lifecycle (cancelar/atualizar).
+
+**Validacao:** Teste 25 + validacao manual dos fluxos descritos em `docs/frontend.md`.
+
+### 3. [ATUALIZACAO] config.template.js e deploy-frontend.sh
+
+**Localizacao:** `frontend/config.template.js`, `scripts/deploy-frontend.sh`
+
+**Problema:** O `config.template.js` nao possuia placeholders para os endpoints de catalogo (`CATALOG_ENDPOINT`), pedidos autenticados (`ORDERS_ENDPOINT`) e clientes (`CUSTOMERS_ENDPOINT`). O `deploy-frontend.sh` nao resolvia esses endpoints nem copiava os novos arquivos `qa.html`/`qa.js`.
+
+**Correcao:** Adicionados placeholders ao template e injecao via sed no deploy. O deploy agora tambem copia `qa.html`, `qa.js` e valida a presenca de ambos apos o sync.
+
+**Justificativa:** O `config.js` e compartilhado entre `index.html` e `qa.html`. Ambos precisam dos mesmos endpoints.
+
+**Validacao:** Teste 25: `$FRONTEND_URL/qa.html` retorna 200 e `$FRONTEND_URL` (index.html) retorna 200.
+
+---
+
+
