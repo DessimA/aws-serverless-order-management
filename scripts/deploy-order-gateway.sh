@@ -52,10 +52,10 @@ EVENT_BUS_ARN=$(aws events describe-event-bus --name "$EVENT_BUS_NAME" --region 
 echo "All dependencies validated."
 
 # === GSI: clientId-index ===
-GSI_EXISTS=$(aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$AWS_REGION" \
-    --query "length(Table.GlobalSecondaryIndexes[?IndexName=='clientId-index']) > \`0\`" --output text 2>/dev/null || echo "false")
+GSI_COUNT=$(aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$AWS_REGION" \
+    --query "length(Table.GlobalSecondaryIndexes[?IndexName=='clientId-index'])" --output text 2>/dev/null || echo "0")
 
-if [ "$GSI_EXISTS" != "true" ]; then
+if [ "$GSI_COUNT" = "0" ]; then
     echo "Creating GSI clientId-index on $TABLE_NAME..."
     aws dynamodb update-table --table-name "$TABLE_NAME" \
         --attribute-definitions AttributeName=clientId,AttributeType=S AttributeName=processedAt,AttributeType=S \
@@ -112,8 +112,14 @@ ORDERS_RESOURCE_ID=$(aws apigateway get-resources --rest-api-id "$REST_API_ID" -
     --query "items[?path=='/orders'].id" --output text)
 validate_not_empty "ORDERS_RESOURCE_ID" "$ORDERS_RESOURCE_ID" "/orders resource ID"
 
+# Create /orders/{orderId} if it does not exist yet (deploy-frontend may not have run)
 ORDER_ID_RESOURCE_ID=$(aws apigateway get-resources --rest-api-id "$REST_API_ID" --region "$AWS_REGION" \
     --query "items[?path=='/orders/{orderId}'].id" --output text)
+if [ -z "$ORDER_ID_RESOURCE_ID" ] || [ "$ORDER_ID_RESOURCE_ID" == "None" ]; then
+    ORDER_ID_RESOURCE_ID=$(aws apigateway create-resource --rest-api-id "$REST_API_ID" \
+        --parent-id "$ORDERS_RESOURCE_ID" --path-part "{orderId}" --region "$AWS_REGION" --query id --output text)
+    echo "Created resource /orders/{orderId}"
+fi
 validate_not_empty "ORDER_ID_RESOURCE_ID" "$ORDER_ID_RESOURCE_ID" "/orders/{orderId} resource ID"
 
 # Resource: /orders/{orderId}/cancel
