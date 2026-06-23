@@ -6,17 +6,17 @@ Endpoint de consulta de pedidos (`GET /orders/{orderId}`). Integrada ao API Gate
 
 ## Comportamento
 
-1. Requisicoes OPTIONS sao tratadas pela integracao MOCK do API Gateway (setup_api_cors) antes de chegar a Lambda.
+1. Requisições OPTIONS são tratadas pela integração MOCK do API Gateway (setup_api_cors) antes de chegar a Lambda.
 2. Extrai `orderId` dos path parameters, tratando `null` com `(params or {})`.
 3. Consulta DynamoDB via `GetItem`.
-4. Retorna 200 com o item, ou 404 se nao encontrado.
-5. Erros `ClientError` sao logados com contexto e retornam 500.
+4. Retorna 200 com o item, ou 404 se não encontrado.
+5. Erros `ClientError` são logados com contexto e retornam 500.
 
 ## Ambiente
 
-| Variavel | Descricao |
+| Variável | Descrição |
 |----------|-----------|
-| `DYNAMODB_TABLE` | Nome da tabela de producao |
+| `DYNAMODB_TABLE` | Nome da tabela de produção |
 
 ## Mudancas recentes
 

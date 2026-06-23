@@ -2,33 +2,33 @@
 
 ## Finalidade
 
-Gateway de pedidos autenticado. Ponto de entrada de producao para leitura e ciclo de vida de pedidos (substitui o `test_controller` no fluxo de usuario final). Todos os handlers validam JWT antes de executar qualquer logica de negocio.
+Gateway de pedidos autenticado. Ponto de entrada de produção para leitura e ciclo de vida de pedidos (substitui o `test_controller` no fluxo de usuário final). Todos os handlers validam JWT antes de executar qualquer lógica de negócio.
 
 ## Comportamento
 
 ### `GET /orders` (list_handler)
 Retorna lista de pedidos do cliente autenticado via GSI `clientId-index`.
 
-| Cenario | HTTP | Resposta |
+| Cenário | HTTP | Resposta |
 |---------|------|----------|
-| Token valido, pedidos existentes | 200 | `{"orders": [...], "count": N}` |
-| Token valido, nenhum pedido | 200 | `{"orders": [], "count": 0}` |
-| Sem token ou invalido | 401 | `{"error": "Missing or invalid Authorization header"}` |
+| Token válido, pedidos existentes | 200 | `{"orders": [...], "count": N}` |
+| Token válido, nenhum pedido | 200 | `{"orders": [], "count": 0}` |
+| Sem token ou inválido | 401 | `{"error": "Missing or invalid Authorization header"}` |
 
 ### `GET /orders/{orderId}` (get_handler)
-Retorna pedido especifico, apenas se pertencer ao cliente autenticado.
+Retorna pedido específico, apenas se pertencer ao cliente autenticado.
 
-| Cenario | HTTP | Resposta |
+| Cenário | HTTP | Resposta |
 |---------|------|----------|
 | Pedido existe e e do cliente | 200 | Item completo |
-| Pedido nao existe | 404 | `{"error": "Order not found"}` |
+| Pedido não existe | 404 | `{"error": "Order not found"}` |
 | Pedido existe mas e de outro cliente | 404 | `{"error": "Order not found"}` (mesma mensagem) |
-| Sem token ou invalido | 401 | `{"error": "..."}` |
+| Sem token ou inválido | 401 | `{"error": "..."}` |
 
 ### `POST /orders/{orderId}/cancel` (cancel_handler)
-Publica evento `OrderCancelled` no EventBridge (fluxo assincrono, processado por `lifecycle_ops`).
+Publica evento `OrderCancelled` no EventBridge (fluxo assíncrono, processado por `lifecycle_ops`).
 
-| Cenario | HTTP | Resposta |
+| Cenário | HTTP | Resposta |
 |---------|------|----------|
 | Sucesso | 202 | `{"status": "Cancellation requested", "orderId": "..."}` |
 | Pedido ja cancelado | 409 | `{"error": "Order is already cancelled"}` |
@@ -38,7 +38,7 @@ Publica evento `OrderCancelled` no EventBridge (fluxo assincrono, processado por
 ### `PATCH /orders/{orderId}` (update_handler)
 Publica evento `OrderUpdated` no EventBridge com `novosItens`.
 
-| Cenario | HTTP | Resposta |
+| Cenário | HTTP | Resposta |
 |---------|------|----------|
 | Sucesso | 202 | `{"status": "Update requested", "orderId": "..."}` |
 | Pedido cancelado | 409 | `{"error": "Cannot update a cancelled order"}` |
@@ -47,34 +47,34 @@ Publica evento `OrderUpdated` no EventBridge com `novosItens`.
 
 ## Ambiente
 
-| Variavel | Descricao |
+| Variável | Descrição |
 |----------|-----------|
 | `DYNAMODB_TABLE` | Nome da tabela order-production-data-* |
-| `JWT_SECRET` | Segredo para validacao de tokens JWT |
+| `JWT_SECRET` | Segredo para validação de tokens JWT |
 | `EVENT_BUS_NAME` | Nome do EventBridge custom bus para eventos de ciclo de vida |
 
-## Decisoes de design
+## Decisões de design
 
-### Autenticacao na Lambda, nao no API Gateway
+### Autenticação na Lambda, não no API Gateway
 
-O API Gateway continua com `authorization-type: NONE`. A validacao do JWT ocorre dentro da Lambda. Motivo: a conta de laboratorio nao tem Cognito nem Lambda Authorizer. Um Lambda Authorizer reduziria o custo de invocacao (bloqueio antes da Lambda de negocio), mas adiciona complexidade de deploy e exige outra Lambda com seu proprio zip e permissoes. A diferenca de custo e irrelevante para este cenario educacional.
+O API Gateway continua com `authorization-type: NONE`. A validação do JWT ocorre dentro da Lambda. Motivo: a conta de laboratório não tem Cognito nem Lambda Authorizer. Um Lambda Authorizer reduziria o custo de invocação (bloqueio antes da Lambda de negócio), mas adiciona complexidade de deploy e exige outra Lambda com seu próprio zip e permissões. A diferença de custo e irrelevante para este cenário educacional.
 
-### Cancel e update retornam 202, nao 200
+### Cancel e update retornam 202, não 200
 
-A operacao e assincrona. A Lambda publica um evento no EventBridge e retorna imediatamente. O estado real do pedido muda quando o `lifecycle_ops` processa o evento. Retornar 202 sinaliza que a requisicao foi aceita para processamento, mas o resultado final nao esta disponivel na resposta.
+A operação e assíncrona. A Lambda publica um evento no EventBridge e retorna imediatamente. O estado real do pedido muda quando o `lifecycle_ops` processa o evento. Retornar 202 sinaliza que a requisição foi aceita para processamento, mas o resultado final não esta disponível na resposta.
 
-### 404 generico para pedido inexistente ou de outro cliente
+### 404 genérico para pedido inexistente ou de outro cliente
 
-Nao revelar se um pedido existe ou nao quando o cliente nao e o dono. Um atacante nao consegue distinguir entre "este orderId nunca existiu" e "este orderId existe mas nao e seu". Ambos retornam 404 com a mesma mensagem.
+Nao revelar se um pedido existe ou não quando o cliente não e o dono. Um atacante não consegue distinguir entre "este orderId nunca existiu" e "este orderId existe mas não e seu". Ambos retornam 404 com a mesma mensagem.
 
 ### Ponte clienteId / clientId
 
-O JWT contem `clienteId` (convencao da API de identidade). O DynamoDB persiste como `clientId` (convencao do `order_processor`, que faz `str(order_detail.get('clienteId'))` ao criar o item). O `order_gateway` usa o valor de `clienteId` do JWT como argumento de busca no campo `clientId` da tabela.
+O JWT contem `clienteId` (convenção da API de identidade). O DynamoDB persiste como `clientId` (convenção do `order_processor`, que faz `str(order_detail.get('clienteId'))` ao criar o item). O `order_gateway` usa o valor de `clienteId` do JWT como argumento de busca no campo `clientId` da tabela.
 
 ### test_controller permanece como ferramenta de QA
 
-O `test_controller` (POST /test) continua existindo como ferramenta interna de QA, permitindo que testadores publiquem eventos diretamente no EventBridge sem passar pelo fluxo de autenticacao JWT. Nao e substituido porque:
-- Testes de integracao (Tests 6-8) dependem dele.
+O `test_controller` (POST /test) continua existindo como ferramenta interna de QA, permitindo que testadores publiquem eventos diretamente no EventBridge sem passar pelo fluxo de autenticação JWT. Nao e substituído porque:
+- Testes de integração (Tests 6-8) dependem dele.
 - Permite debug de fluxos de ciclo de vida sem depender do gateway.
 - E protegido por API Key e Usage Plan.
 

@@ -2,9 +2,9 @@
 
 ## Finalidade
 
-Sem AWS X-Ray disponivel na conta de laboratorio, o logging estruturado com `pedidoId` como correlacao permite rastrear a jornada completa de um pedido atraves das Lambdas usando CloudWatch Logs Insights.
+Sem AWS X-Ray disponível na conta de laboratório, o logging estruturado com `pedidoId` como correlação permite rastrear a jornada completa de um pedido atraves das Lambdas usando CloudWatch Logs Insights.
 
-## Funcao `log_event()`
+## Função `log_event()`
 
 Definida em `src/common/utils.py`, produz uma linha JSON por evento:
 
@@ -14,11 +14,11 @@ Definida em `src/common/utils.py`, produz uma linha JSON por evento:
 
 Campos:
 - `stage`: nome da Lambda que emitiu o log (e.g., `pre_validator`, `order_validator`, `order_processor`, `lifecycle_ops`, `batch_processor`)
-- `pedidoId`: identificador unico do pedido sendo processado
-- `message`: descricao do evento
-- `timestamp`: instante da emissao em ISO 8601
+- `pedidoId`: identificador único do pedido sendo processado
+- `message`: descrição do evento
+- `timestamp`: instante da emissão em ISO 8601
 
-## Fluxo de correlacao
+## Fluxo de correlação
 
 ```mermaid
 sequenceDiagram
@@ -40,7 +40,7 @@ sequenceDiagram
     Note over PERS: Status: PROCESSED
 
     LC->>CW: log_event("lifecycle_ops", "ORD-123", "Order marked as CANCELLED")
-    Note over LC: Operacao de cancelamento
+    Note over LC: Operação de cancelamento
 ```
 
 ## Query no CloudWatch Logs Insights

@@ -2,31 +2,31 @@
 
 ## Finalidade
 
-Controlador de testes interno (rota `POST /test`). Orquestra tres acoes para validacao dos fluxos do sistema.
+Controlador de testes interno (rota `POST /test`). Orquestra tres ações para validação dos fluxos do sistema.
 
-## Acoes
+## Ações
 
 ### `publish_event`
-Publica eventos de ciclo de vida (`OrderCancelled` / `OrderUpdated`) diretamente no EventBridge, permitindo testar os fluxos de cancelamento e atualizacao sem dependencia do frontend.
+Publica eventos de ciclo de vida (`OrderCancelled` / `OrderUpdated`) diretamente no EventBridge, permitindo testar os fluxos de cancelamento e atualização sem dependência do frontend.
 
 Aceita apenas os `detailType` listados em `ALLOWED_DETAIL_TYPES` no codigo. Qualquer outro detailType retorna `400 Bad Request`.
 
 ### `upload_file`
-Faz upload de conteudo para o bucket S3 de dados, acionando o `batch_processor` para validacao e auditoria.
+Faz upload de conteúdo para o bucket S3 de dados, acionando o `batch_processor` para validação e auditoria.
 
 ### `list_files`
-Lista arquivos no bucket S3 com paginacao completa. Percorre todas as paginas usando `ContinuationToken` para garantir que todos os objetos sejam retornados, mesmo em buckets com mais de 1000 objetos.
+Lista arquivos no bucket S3 com páginação completa. Percorre todas as páginas usando `ContinuationToken` para garantir que todos os objetos sejam retornados, mesmo em buckets com mais de 1000 objetos.
 
 ## Ambiente
 
-| Variavel | Descricao |
+| Variável | Descrição |
 |----------|-----------|
 | `EVENT_BUS_NAME` | Nome do barramento de eventos |
 | `S3_BUCKET` | Nome do bucket S3 de dados |
 
 ## Mudancas recentes
 
-- `handle_list_files` agora implementa paginacao com loop `while IsTruncated`.
-- `handle_publish_event` agora valida `detailType` contra um allowlist (`ALLOWED_DETAIL_TYPES`), rejeitando tipos nao autorizados com 400.
-- `handle_list_files` implementa paginacao com loop `while IsTruncated`.
+- `handle_list_files` agora implementa páginação com loop `while IsTruncated`.
+- `handle_publish_event` agora valida `detailType` contra um allowlist (`ALLOWED_DETAIL_TYPES`), rejeitando tipos não autorizados com 400.
+- `handle_list_files` implementa páginação com loop `while IsTruncated`.
 - Uso de `common.http.api_response()` e `error_response()`.
