@@ -6,7 +6,43 @@ Este documento descreve cada problema identificado, a correcao aplicada e a just
 
 ---
 
-## Rodada 10
+## Rodada 12
+
+### 1. [DOCUMENTACAO] README orientado a portfolio
+
+**Localizacao:** `README.md`.
+
+**Problema:** README existente era um manual tecnico detalhado voltado para quem ja conhecia o projeto, nao para um recrutador ou engenheiro avaliando o portfolio pela primeira vez.
+
+**Correcao:** Reescrita completa com narrativa de produto (tres paragrafos: o que e, como funciona, diferencial de portfolio), tabela de servicos AWS com alternativas descartadas, secao de decisoes de design em destaque com links para ARCHITECTURE.md, e tabela de historico de evolucao por rodada.
+
+**Justificativa:** Portfolio eficaz precisa funcionar para leitores com diferentes niveis de contexto (recrutador em 30s, engenheiro em 5min, colaborador em 30min).
+
+**Validacao:** Validacao visual.
+
+### 2. [DOCUMENTACAO] ARCHITECTURE.md
+
+**Localizacao:** `ARCHITECTURE.md` (arquivo novo).
+
+**Problema:** Decisoes de design estavam distribuidas entre CORRECOES.md (formato de log), docs/ individuais por componente e comentarios nos scripts. Nao havia um documento consolidado por tema que respondesse as perguntas tipicas de entrevista.
+
+**Correcao:** Documento com 10 secoes tematicas: EDA, resiliencia (DLQ, batchItemFailures, VisibilityTimeout), idempotencia (ConditionExpression vs fila), seguranca (JWT manual, ownership), observabilidade (log_event), custo (Reserved Concurrency, TTL, log retention), IaC (shell vs Terraform), FIFO vs Standard, frontend (localStorage, 202 async), e delta para producao real.
+
+**Justificativa:** Recrutadores tecnicos buscam evidencia de pensamento sistemico e consciencia de trade-offs. Um documento tematico e mais eficaz do que um log cronologico para demonstrar esse perfil.
+
+**Validacao:** Validacao visual e revisao cruzada com o codigo e scripts existentes.
+
+### 3. [DOCUMENTACAO] Diagrama de arquitetura consolidado
+
+**Localizacao:** `README.md` e `ARCHITECTURE.md`.
+
+**Problema:** Diagrama existente no README nao incluia os componentes das Rodadas 8 a 11 (customer_auth, catalog_reader, order_gateway, GSI, frontend CloudCert).
+
+**Correcao:** Diagrama Mermaid atualizado representando todos os 11 Lambdas, todas as filas (FIFO e Standard), todas as tabelas DynamoDB (4), todos os endpoints do API Gateway (11), ambos os frontends (CloudCert e QA Dashboard), EventBridge, SNS, CloudWatch e S3 dados.
+
+**Justificativa:** O diagrama e o primeiro elemento visual que um avaliador tecnico busca para entender a amplitude do sistema.
+
+**Validacao:** Validacao visual de renderizacao Mermaid no GitHub.
 
 ### 1. [NOVA FUNCIONALIDADE] GSI `clientId-index` na tabela de producao
 

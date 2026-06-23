@@ -2,488 +2,227 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
-[![AWS](https://img.shields.io/badge/AWS-Serverless-orange.svg)](https://aws.amazon.com/serverless/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![AWS Serverless](https://img.shields.io/badge/AWS-Serverless-orange.svg)](https://aws.amazon.com/serverless/)
+[![LocalStack](https://img.shields.io/badge/LocalStack-Pro-purple.svg)](https://localstack.cloud/)
 
-## 1. Introdução
-Este projeto documenta a construção de um sistema de gerenciamento de pedidos escalável e resiliente, utilizando uma arquitetura orientada a eventos (Event-Driven Architecture - EDA). A solução foi projetada para lidar com alta concorrência, garantindo a integridade dos dados e o desacoplamento entre os produtores de pedidos e os processadores de negócio.
+## Sobre o Projeto
 
-O sistema suporta múltiplos canais de entrada e gerencia o ciclo de vida completo de um pedido, desde a validação inicial até estados finais como alteração de itens ou cancelamento.
+Um sistema serverless de gerenciamento de pedidos para cursos e vouchers de certificacao em nuvem. Clientes se cadastram, navegam por um catalogo de cursos (AWS, Azure, GCP), compram com um clique e acompanham o ciclo de vida completo do pedido (processamento, atualizacao, cancelamento). O sistema foi construido em 11 rodadas iterativas, cada uma adicionando uma camada de complexidade, e documenta decisoes de design conscientes em cada etapa.
 
-## 2. Arquitetura do Sistema
+A arquitetura e orientada a eventos: o barramento central EventBridge desacopla produtores de consumidores, filas SQS absorvem picos de carga e garantem resiliencia a falhas temporarias, e o DynamoDB lida com idempotencia via ConditionExpression. Nenhuma chamada sincrona cruza fronteiras de servico. O projeto opera exclusivamente via AWS CLI e shell scripts, sem frameworks de Infrastructure as Code, expondo os parametros reais de cada servico AWS.
 
-A arquitetura utiliza SQS FIFO como buffer de validação, EventBridge como barramento de eventos central, e SQS como buffer de processamento para cada operação. Abaixo, o fluxograma técnico da solução:
+Este projeto e material de portfolio. Cada decisao tecnica foi tomada com consciencia dos trade-offs, documentada em [ARCHITECTURE.md](ARCHITECTURE.md), e revisada ao longo das rodadas. O objetivo e demonstrar pensamento sistemico sobre arquitetura serverless, nao apenas a implementacao funcional.
+
+## Demo Rapida
+
+**Fluxo completo:** cadastro > catalogo > compra > meus pedidos > cancelar
+
+1. Acesse o frontend (URL exibida apos deploy).
+2. Cadastre-se com email e senha.
+3. Navegue pelo catalogo, filtre por provedor (AWS/Azure/GCP) ou tipo (Curso/Voucher).
+4. Clique em "Comprar" em qualquer curso.
+5. Va para "Meus Pedidos" para ver o status.
+6. Clique em um pedido para detalhe: cancele ou atualize os itens.
+
+**Links apos deploy:**
+- [Frontend CloudCert]($FRONTEND_URL)
+- [QA Dashboard]($FRONTEND_URL/qa.html)
+
+## Arquitetura
 
 ```mermaid
 flowchart LR
-    subgraph "Camada de Ingestao"
-        A["Cliente API"] -- "HTTP POST" --> B("API Gateway")
-        B -- "Proxy" --> C{"Lambda Pre-Validator"}
-        C --> D["SQS FIFO (Validacao)"]
-        D --> E{"Lambda Validator"}
-        F["Parceiro S3"] -- "JSON Upload" --> G[("S3 Data Lake")]
-        G -- "Event Notification" --> H["SQS Standard (Arquivos)"]
-        H --> I{"Lambda File Validator"}
+    subgraph "Cliente Final"
+        Browser["Browser index.html"]
     end
 
-    subgraph "Roteamento de Eventos (Bus)"
-        E -- "Publish" --> J["EventBridge Custom Bus"]
-        I -- "Audit Log" --> K[("DynamoDB Audit")]
-        I -- "Error Alert" --> L["SNS Notifications"]
+    subgraph "Ferramenta QA"
+        QA["Browser qa.html"]
     end
 
-    subgraph "Operacoes de Ciclo de Vida"
-        J -- "Rule" --> M["SQS Standard (Pedidos Pendentes)"] -- "Trigger" --> N{"Order Processor"}
-        J -- "Rule" --> O["SQS Standard (Cancelar Pedido)"] -- "Trigger" --> P{"Cancel Processor"}
-        J -- "Rule" --> Q["SQS Standard (Alterar Pedido)"] -- "Trigger" --> R{"Update Processor"}
+    subgraph "S3 Frontend"
+        S3FE["S3 Static Website"]
     end
 
-    subgraph "Persistencia"
-        N -- "Create" --> S[("DynamoDB Production")]
-        P -- "Update" --> S
-        R -- "Update" --> S
+    subgraph "API Gateway (order-ingestion-api)"
+        GW_POST["/orders POST"]
+        GW_GET["/orders GET"]
+        GW_GET_ID["/orders/{id} GET"]
+        GW_CANCEL["/orders/{id}/cancel POST"]
+        GW_PATCH["/orders/{id} PATCH"]
+        GW_CAT["/catalog GET"]
+        GW_CAT_ID["/catalog/{id} GET"]
+        GW_REG["/customers/register POST"]
+        GW_LOGIN["/customers/login POST"]
+        GW_ME["/customers/me GET"]
+        GW_TEST["/test POST (API Key)"]
     end
 
-    subgraph "Frontend de Testes"
-        T["S3 Static Website (Testing Dashboard)"]
-        T -- "POST" --> B
-        T -- "POST" --> X{"Test Controller Lambda"}
-        T -- "GET" --> Y["GET /orders/:id"]
-        Y --> V["Lambda Order Reader"]
-        X -- "Publish" --> J
-        X -- "Upload" --> G
+    subgraph "Lambdas de Ingestao"
+        PRE["pre_validator"]
+        VAL["order_validator"]
     end
+
+    subgraph "Lambdas de Produto"
+        GWL["order_gateway"]
+        CAT["catalog_reader"]
+        AUTH["customer_auth"]
+        CTRL["test_controller"]
+    end
+
+    subgraph "Lambdas de Processamento"
+        PROC["order_processor"]
+        CANCEL["lifecycle_ops (cancel)"]
+        UPDATE["lifecycle_ops (update)"]
+        BATCH["batch_processor"]
+    end
+
+    subgraph "Filas SQS"
+        FIFO["order-validation-buffer (FIFO)"]
+        PERSQ["order-persister-queue (Standard)"]
+        CANCELQ["cancel-order-queue (Standard)"]
+        UPDATEQ["update-order-queue (Standard)"]
+        S3Q["order-s3-batch-queue (Standard)"]
+    end
+
+    subgraph "DynamoDB"
+        PROD["order-production-data + GSI clientId-index"]
+        AUDIT["order-batch-audit (TTL 90 dias)"]
+        CATALOG["course-catalog"]
+        CUSTOMERS["customer-data"]
+    end
+
+    subgraph "EventBridge"
+        EB["orders-event-bus"]
+    end
+
+    subgraph "SNS + CloudWatch"
+        SNS["order-notifications (email)"]
+        CW["CloudWatch Alarms (5 DLQs)"]
+    end
+
+    subgraph "S3 Dados"
+        S3D["order-files-bucket"]
+    end
+
+    Browser --> S3FE
+    QA --> S3FE
+    Browser --> GW_POST & GW_GET & GW_GET_ID & GW_CANCEL & GW_PATCH & GW_CAT & GW_CAT_ID & GW_REG & GW_LOGIN & GW_ME
+    QA --> GW_TEST
+
+    GW_POST --> PRE --> FIFO --> VAL --> EB
+    GW_GET & GW_GET_ID & GW_CANCEL & GW_PATCH --> GWL
+    GW_CAT & GW_CAT_ID --> CAT
+    GW_REG & GW_LOGIN & GW_ME --> AUTH
+    GW_TEST --> CTRL
+
+    GWL --> PROD
+    GWL --> EB
+    CAT --> CATALOG
+    AUTH --> CUSTOMERS
+    CTRL --> EB & S3D
+
+    EB --> PERSQ --> PROC --> PROD
+    EB --> CANCELQ --> CANCEL --> PROD
+    EB --> UPDATEQ --> UPDATE --> PROD
+    S3D --> S3Q --> BATCH --> AUDIT
+
+    PROC & CANCEL & UPDATE & VAL & BATCH --> SNS
+    CW --> SNS
 ```
 
-## 3. Stack Tecnológica
-*   **Linguagem de Programação:** Python 3.12 utilizando o SDK Boto3.
-*   **Infraestrutura como Código (IaC):** Automação via Shell Scripting e AWS CLI.
-*   **Serviços AWS:**
-    *   **Amazon API Gateway:** Ponto de entrada REST para integração síncrona.
-    *   **AWS Lambda:** Execução de lógica de negócio serverless (11 funções).
-    *   **Amazon S3:** Armazenamento de objetos para processamento em lote.
-    *   **Amazon SQS:** Fila FIFO para buffer de validação; filas Standard para processamento e notificações S3.
-    *   **Amazon EventBridge:** Orquestrador de eventos para desacoplamento total.
-    *   **Amazon DynamoDB:** Banco de dados NoSQL (tabela de produção + tabela de auditoria).
-    *   **Amazon SNS:** Serviço de notificações para alertas de erro.
-    *   **AWS IAM:** Gerenciamento de permissões baseado no princípio de menor privilégio.
-*   **Ambiente Local:** LocalStack Pro (via Docker) para emulação de serviços AWS.
+Para decisoes detalhadas de design, veja [ARCHITECTURE.md](ARCHITECTURE.md).
 
----
+## Stack e Servicos AWS
 
-## 4. Detalhamento dos Componentes
+| Servico | Papel no sistema | Alternativa avaliada |
+|---|---|---|
+| **API Gateway** | Ponto de entrada REST (11 endpoints) com Request Validator, CORS, API Key para /test | N/A (unico servico de API HTTP serverless da AWS) |
+| **Lambda** | 11 funcoes Python 3.12 para logica de negocio serverless | ECS/Fargate: overhead operacional desnecessario para funcoes de curta duracao |
+| **SQS FIFO** | Buffer de validacao com ordenacao por pedido e ContentBasedDeduplication | Processamento sincrono: sem resiliencia a falhas temporarias |
+| **SQS Standard** | 3 filas de processamento + 1 fila S3 batch, paralelismo garantido | FIFO para processamento: forjava sequencial sem ganho de corretude |
+| **EventBridge** | Barramento central de eventos, roteia por detail-type e source | SNS fanout: menor expressividade de filtro e sem suporte a Content-Based Filtering |
+| **DynamoDB** | 4 tabelas: pedidos (com GSI), auditoria (TTL 90d), catalogo, clientes | RDS: custo e operacao mais altos para volume variavel de laboratorio |
+| **SNS** | Notificacoes de erro (duplicata, schema invalido, DLQ) para email | N/A (unico servico de pub/sub email da AWS) |
+| **S3** | 2 buckets: dados (batch files) e frontend (static website) | EFS: sem necessidade de sistema de arquivos compartilhado |
+| **IAM** | 11 roles com politicas de menor privilegio, inline e gerenciadas | N/A (unico servico de autorizacao AWS) |
+| **CloudWatch** | Logs (retencao 14d), Alarmes (5 DLQs), metricas | X-Ray: nao disponivel na conta de laboratorio |
+| **LocalStack** | Emulacao local de servicos AWS via Docker | AWS real: custo para desenvolvimento iterativo |
 
-### 4.1. Camada de Ingestão Síncrona (API)
-O fluxo inicia no **Amazon API Gateway**, que expõe um endpoint REST. A requisição é encaminhada para a Lambda `pre_validator`. Esta função realiza o parse do JSON, valida a presença de campos obrigatórios (`pedidoId` e `clienteId`), e envia a mensagem para uma **fila SQS FIFO** (`order-validation-buffer`). Imediatamente retorna `200` ao cliente com o pedido aceito.
-
-A Lambda `order_validator` consome a fila FIFO, publica o pedido validado no **Amazon EventBridge Custom Bus** com `DetailType: OrderValidated`, e em caso de falha dispara um alerta via **SNS**. O uso do SQS FIFO como buffer garante:
-- **Desacoplamento:** A resposta ao cliente não depende da disponibilidade do EventBridge.
-- **Ordenação:** Pedidos são processados na ordem de chegada (MessageGroupId = pedidoId).
-- **Deduplicação:** A identificação única de cada mensagem SQS é garantida por um UUID gerado no momento do envio, permitindo que reenvios do mesmo pedidoId cheguem até a camada de persistência. A duplicidade de negócio é tratada pelo `ConditionExpression: attribute_not_exists(orderId)` no DynamoDB, com alerta SNS em caso de duplicata.
-
-### 4.2. Camada de Ingestão Assíncrona (S3, Somente Auditoria)
-Projetada para integração com sistemas legados ou parceiros que exportam arquivos. Quando um arquivo JSON é carregado no **Amazon S3**, uma notificação de evento é enviada para uma fila **SQS Standard**. A Lambda `file_validator` (anteriormente `batch_processor`) consome esta fila, baixa o arquivo e valida o schema (presença da chave `lista_pedidos`).
-*   **Auditoria:** Cada arquivo processado tem seu status (PROCESSED ou ERROR) registrado na tabela DynamoDB de auditoria.
-*   **Alertas:** Em caso de falha no schema do arquivo, um alerta é disparado via **Amazon SNS**.
-*   **Nota:** Diferente de versões anteriores, este fluxo **não** publica eventos no EventBridge. Pedidos em lote são apenas validados e auditados, não criam registros na tabela de produção.
-
-### 4.3. Barramento de Eventos (EventBridge)
-Atua como o sistema nervoso central da arquitetura. Ele recebe eventos da Lambda `order_validator` (fluxo de criação via API) e do `test_controller` (fluxo de teste de cancelamento/atualização). Através de **Regras (Rules)** baseadas em padrões de eventos (`source` e `detail-type`), o EventBridge roteia os dados para as filas SQS específicas de cada operação (Criação, Alteração ou Cancelamento).
-
-Regras do EventBridge para filas Standard nao exigem `SqsParameters.MessageGroupId`, permitindo processamento paralelo. A fila de validacao (SQS FIFO) nao possui target do EventBridge, recebendo mensagens diretamente do pre_validator.
-
-### 4.4. Camada de Persistência e Ciclo de Vida
-As Lambdas de processamento final são acionadas por filas SQS que atuam como buffers de carga.
-*   **Order Processor (implantado como `order-persister-*`):** Cria o registro inicial na tabela `order-production-data` com `ConditionExpression: attribute_not_exists(orderId)` para impedir sobrescrita de pedidos duplicados.
-*   **Update Processor:** Atualiza itens de pedidos existentes utilizando `UpdateExpression` e `ConditionExpression: attribute_exists(orderId)` para garantir que o pedido existe antes de alterá-lo.
-*   **Cancel Processor:** Altera o status do pedido para `CANCELLED` com `ConditionExpression: attribute_exists(orderId)`, prevenindo criação de registros fantasmas.
-
-Todas as três Lambdas utilizam a função `parse_detail()` do módulo `common.sqs`, que trata corretamente o campo `detail` do envelope EventBridge independentemente de chegar como string ou objeto JSON nativo.
-
-### 4.5. Camada de Consulta (Leitura de Pedidos)
-A Lambda `read_order` expõe um endpoint `GET /orders/{orderId}` no API Gateway existente. Ela consulta a tabela DynamoDB `order-production-data` via `GetItem` e retorna o item completo ou `404` se não encontrado. Respostas incluem headers CORS para integração com o frontend.
-
-### 4.6. Controlador de Testes (`test_controller`)
-
-Lambda auxiliar de uso interno (rota `POST /test` do mesmo API Gateway) que orquestra três ações:
-- **`publish_event`**: Publica eventos de ciclo de vida (`OrderCancelled`/`OrderUpdated`) no EventBridge para testar os fluxos de cancelamento/atualização.
-- **`upload_file`**: Faz upload de conteúdo para o bucket S3 de dados, acionando o fluxo de validação assíncrona (`file_validator` → DynamoDB Audit + SNS).
-- **`list_files`**: Lista arquivos no bucket S3 para verificação pós-teste.
-
-### 4.7. Identidade do Cliente (`customer_auth`)
-
-A Lambda `customer_auth` gerencia cadastro, login e consulta de perfil de clientes, expondo tres endpoints no API Gateway:
-- **`POST /customers/register`**: Cadastra novo cliente com email e senha. A senha e hasheada com PBKDF2-SHA256 e salt. Retorna 409 se email ja cadastrado.
-- **`POST /customers/login`**: Autentica cliente e retorna um JWT com validade de 24 horas.
-- **`GET /customers/me`**: Retorna dados do cliente a partir de um token JWT valido (header `Authorization: Bearer <token>`).
-
-O hash de senha e a assinatura JWT sao implementados manualmente em `src/common/auth.py` usando apenas a biblioteca padrao do Python, pois a conta de laboratorio nao tem Cognito, Secrets Manager ou KMS CMK. Para detalhes, veja `docs/customer_auth.md`.
-
-### 4.8. Catalogo de Cursos e Vouchers (`catalog_reader`)
-
-A Lambda `catalog_reader` expoe um endpoint publico de vitrine de produtos (`GET /catalog` e `GET /catalog/{cursoId}`), sem autenticacao, para que clientes possam navegar pelos cursos e vouchers antes de se cadastrar.
-
-O catalogo e armazenado na tabela DynamoDB `course-catalog-*` (chave `cursoId`). Cada item tem atributos como `nome`, `descricao`, `provider` (AWS/Azure/GCP), `tipo` (curso/voucher), `nivel`, `preco`, `duracao` e `disponivel`.
-
-- **`GET /catalog`**: Lista itens com `disponivel = true`. Itens indisponiveis nunca sao retornados.
-- **`GET /catalog/{cursoId}`**: Retorna detalhe de um item. Itens com `disponivel = false` retornam 404 (nao revelam existencia).
-
-O campo `cursoId` de cada item do catalogo e o `sku` dos itens de pedido, conectando o catalogo ao fluxo de criacao de pedidos sem acoplamento direto. O preco e serializado como numero (float) pelo `_DecimalEncoder` de `common/http.py`.
-
-Para detalhes, veja `docs/catalog_reader.md`.
-
-### 4.9. Gateway de Pedidos (`order_gateway`)
-
-A Lambda `order_gateway` expoe quatro endpoints autenticados via JWT para leitura e ciclo de vida de pedidos. Substitui o `test_controller` como interface de producao para usuarios finais:
-
-- **`GET /orders`**: Lista pedidos do cliente autenticado usando o GSI `clientId-index`.
-- **`GET /orders/{orderId}`**: Retorna pedido especifico com validacao de ownership (404 se pedido de outro cliente).
-- **`POST /orders/{orderId}/cancel`**: Publica evento `OrderCancelled` no EventBridge (assincrono, retorna 202).
-- **`PATCH /orders/{orderId}`**: Publica evento `OrderUpdated` no EventBridge com novos itens (retorna 202).
-
-O cancelamento e a atualizacao sao operacoes assincronas: a Lambda publica um evento no EventBridge e o `lifecycle_ops` processa a mudanca de estado no DynamoDB. Isso reaproveita a infraestrutura de ciclo de vida existente sem altera-la.
-
-A rota `GET /orders/{orderId}` foi migrada de `read_order` para `order_gateway` para garantir validacao de ownership. A Lambda `read_order` permanece implantada mas o endpoint agora aponta para `order_gateway`. Para detalhes, veja `docs/order_gateway.md`.
-
-## 5. Estrutura do Projeto
-
-A organização do repositório segue padrões de modularidade para facilitar a manutenção e o deploy independente de componentes:
+## Estrutura do Repositorio
 
 ```text
-aws-serverless-order-ingestion/
-├── .github/                    # Templates de contribuicao
-│   ├── ISSUE_TEMPLATE/
-│   │   ├── bug_report.md       # Template de report de bug
-│   │   └── feature_request.md  # Template de solicitacao de funcionalidade
-│   └── PULL_REQUEST_TEMPLATE.md # Template de Pull Request
-├── scripts/                    # Infraestrutura como Codigo (IaC) e Deploy
-│   ├── lib.sh                  # 26 funcoes utilitarias (deploy, validacao, IAM, SQS, EventBridge, JWT)
-│   ├── deploy-api-flow.sh      # Provisiona API Gateway, SQS FIFO, Pre-Validator e Validator
-│   ├── deploy-s3-flow.sh       # Provisiona S3, SQS Standard, File Validator e Auditoria
-│   ├── deploy-order-processor.sh # Provisiona o Processador Central (persistencia)
-│   ├── deploy-lifecycle-ops.sh # Provisiona fluxos de Alterar e Cancelar
-│   ├── deploy-catalog.sh       # Catalogo de cursos e vouchers
-│   ├── deploy-order-gateway.sh # Gateway de pedidos autenticado com GSI
-│   ├── seed-catalog.sh         # Popula tabela do catalogo com dados iniciais
-│   ├── deploy-frontend.sh      # Frontend S3 + Lambdas read_order + test_controller
-│   └── validate-flow.sh        # Script automatizado de testes E2E
-├── src/                        # Codigo-fonte das funcoes AWS Lambda
-│   ├── common/                 # Modulos utilitarios compartilhados (http, sqs, sns, utils)
-│   ├── pre_validator/          # Logica de pre-validacao e envio para SQS FIFO
-│   ├── order_validator/        # Logica de validacao (SQS → EventBridge + SNS)
-│   ├── batch_processor/        # Logica de extracao de arquivos e auditoria (S3 → DynamoDB)
-│   ├── order_processor/        # Persistencia do estado inicial do pedido
-│   ├── lifecycle_ops/          # Operacoes de atualizacao e cancelamento
-│   ├── read_order/             # Leitura de pedidos (GET /orders/{id})
-│   ├── test_controller/        # Controlador de testes (EventBridge + S3 upload)
-│   ├── customer_auth/          # Autenticacao de clientes (cadastro, login, JWT)
-│   ├── catalog_reader/         # Leitura do catalogo de cursos (GET /catalog)
-│   └── order_gateway/          # Gateway de pedidos autenticado (CRUD com JWT)
-├── frontend/                   # Dashboard de testes (S3 Static Website)
-│   ├── index.html              # Interface com abas para cada fluxo
-│   ├── style.css               # Tema escuro responsivo
-│   ├── config.template.js      # Template com placeholders (processado pelo deploy)
-│   └── app.js                  # Logica de teste por seção (Novo Pedido, Consultar, Gerenciar, Upload)
-├── samples/                    # Exemplos de payloads para testes e integracao
-│   ├── api_request.json        # Modelo de requisicao para o API Gateway
-│   ├── valid_batch.json        # Modelo de arquivo para processamento S3
-│   └── invalid_batch.json      # Modelo para teste de falha e alerta SNS
-├── .env.example                # Template de variaveis de ambiente
-├── CODE_OF_CONDUCT.md          # Codigo de Conduta (Contributor Covenant v2.1)
-├── CONTRIBUTING.md             # Guia de contribuicao
-├── docker-compose.yaml         # Orquestracao do ambiente LocalStack Pro
-├── LICENSE                     # Licenca MIT
-├── run.sh                      # Script principal de automacao do Lab
-├── SECURITY.md                 # Politica de seguranca e report de vulnerabilidades
-└── README.md                   # Documentacao tecnica completa
+.
+├── scripts/              # IaC: deploy, validacao, utilitarios (26 funcoes lib.sh)
+├── src/                  # Codigo-fonte das 11 Lambdas + modulo common/
+├── frontend/             # 2 frontends: CloudCert (index.html) + QA Dashboard (qa.html)
+├── samples/              # Payloads de teste (api_request.json, batch JSONs)
+├── docs/                 # Documentacao individual por componente (16 arquivos)
+├── ARCHITECTURE.md       # Decisoes de design por tema (este documento)
+├── run.sh                # Orquestrador principal: deploy completo + validacao
+└── cleanup.sh            # Remocao completa de recursos (idempotente)
 ```
 
----
+## Como Executar
 
-## 6. Pré-requisitos Técnicos
+### Pre-requisitos
 
-Antes de iniciar a implantação, certifique-se de ter as seguintes ferramentas instaladas e configuradas:
+- AWS CLI v2 configurado
+- Python 3.12
+- Docker e Docker Compose (para LocalStack)
+- Utilitario `zip`
 
-*   **AWS CLI v2:** Configurado com credenciais válidas (`aws configure`).
-*   **Python 3.12:** Necessário para a execução das funções Lambda.
-*   **Docker e Docker Compose:** Obrigatórios para a execução via LocalStack.
-*   **Utilitário Zip:** Utilizado pelos scripts de automação para empacotar o código-fonte das Lambdas.
-*   **JQ (Opcional):** Recomendado para formatar as saídas JSON no terminal.
-
-## 7. Configuração do Ambiente
-
-O projeto utiliza um arquivo de variáveis de ambiente para centralizar as configurações e evitar a exposição de dados sensíveis.
-
-1.  Localize o arquivo `.env.example` na raiz do projeto.
-2.  Crie uma cópia chamada `.env`:
-    ```bash
-    cp .env.example .env
-    ```
-3.  Preencha as variáveis conforme as instruções abaixo:
-    *   `AWS_REGION`: Região de destino (ex: `us-east-2`).
-    *   `RESOURCE_SUFFIX`: Identificador único para evitar conflitos de nomes (ex: seu nome).
-    *   `NOTIFICATION_EMAIL`: E-mail que receberá os alertas do Amazon SNS.
-    *   `LOCALSTACK_AUTH_TOKEN`: Seu token de acesso (necessário para recursos Pro no LocalStack).
-
-## 8. Execução via LocalStack (Desenvolvimento Local)
-
-Este projeto foi validado utilizando o LocalStack Pro, permitindo um ciclo de desenvolvimento rápido e sem custos de infraestrutura.
-
-1.  **Subir o container:**
-    ```bash
-    docker-compose up -d
-    ```
-2.  **Verificar a saúde do ambiente:**
-    Acesse `http://localhost:4566/_localstack/health` para garantir que os serviços (Lambda, SQS, S3, DynamoDB, EventBridge) estão prontos.
-3.  **Configurar o endpoint local (Opcional):**
-    Para facilitar o uso do CLI apontando para o LocalStack, você pode utilizar o alias `awslocal` ou configurar o endpoint manualmente nos comandos.
-
-## 9. Implantação Automatizada
-
-O projeto conta com um orquestrador principal (`run.sh`) que gerencia a ordem de precedência das dependências.
-
-Para realizar o deploy completo, execute:
+### Deploy Local (LocalStack)
 
 ```bash
-chmod +x run.sh
+cp .env.example .env
+docker-compose up -d
 ./run.sh
 ```
 
-### O que o script realiza:
-1.  **Validação de Permissões:** Garante que todos os scripts na pasta `scripts/` são executáveis.
-2.  **Deploy Fase 1 (API):** Cria o EventBus, SNS, SQS FIFO de validação, Lambdas `pre_validator` e `order_validator`, e API Gateway com integração CORS.
-3.  **Deploy Fase 2 (S3):** Cria o bucket de dados, a fila SQS Standard, a Lambda `file_validator`, a tabela de auditoria DynamoDB, e a notificação S3 → SQS.
-4.  **Deploy Fase 3 (Processor):** Cria a tabela DynamoDB de produção, a fila SQS FIFO de pedidos pendentes, a Lambda `order_persister`, e a regra EventBridge com `MessageGroupId`.
-5.  **Deploy Fase 4 (Lifecycle):** Cria as filas SQS Standard e Lambdas de alteração e cancelamento, com suas respectivas regras no EventBridge.
-6.  **Deploy Fase 5 (Gateway):** Cria o GSI `clientId-index` na tabela de produção, a Lambda `order_gateway`, e os endpoints autenticados `GET /orders`, `GET /orders/{orderId}`, `PATCH /orders/{orderId}` e `POST /orders/{orderId}/cancel`. Migra a rota `GET /orders/{orderId}` de `read_order` para `order_gateway`.
-7.  **Deploy Fase 6 (Catalog):** Cria a tabela DynamoDB `course-catalog-*`, a Lambda `catalog_reader`, e os endpoints `GET /catalog` e `GET /catalog/{cursoId}` no API Gateway. Popula a tabela com dados iniciais (11 cursos e vouchers).
-8.  **Deploy Fase 7 (Frontend):** Cria as Lambdas `read_order` e `test_controller`, adiciona os recursos `GET /orders/{orderId}` e `POST /test` ao API Gateway existente, cria o bucket S3 do frontend com Static Website Hosting, e faz upload dos arquivos com URLs injetadas.
-9.  **Validação E2E:** Dispara automaticamente o script `validate-flow.sh` para testar todos os componentes.
+### Deploy na AWS
 
-### Utilitários (scripts/lib.sh)
-Os scripts de deploy compartilham 26 funções utilitárias:
+Edite `.env`: defina `DEPLOY_TARGET=aws`, preencha `AWS_REGION`, `RESOURCE_SUFFIX`, `NOTIFICATION_EMAIL`.
 
-| Função | Descrição |
-|--------|-----------|
-| `load_env` | Carrega o `.env` de forma segura via `set -a` + `source` |
-| `validate_env` | Valida que variáveis obrigatórias estão definidas |
-| `wait_for_iam_role` | Polling ativo (12 tentativas, 5s) para propagação de IAM Role |
-| `wait_for_sqs_queue` | Aguarda fila SQS ficar disponível após criação |
-| `put_integration_response_cors` | Configura headers CORS em integration response do API Gateway |
-| `sns_subscribe_email` | Inscreve e-mail no tópico SNS de forma idempotente |
-| `validate_not_empty` | Valida que ARN/ID não está vazio ou `None` |
-| `validate_lambda_config` | Valida timeout (60s) e variáveis de ambiente da Lambda |
-| `validate_sqs_queue` | Valida VisibilityTimeout=$VISIBILITY_TIMEOUT (padrao 360s) e ContentBasedDeduplication (se FIFO) |
-| `validate_sqs_policy` | Valida política resource-based da fila SQS |
-| `validate_eventbridge_target` | Valida target da regra EventBridge (ARN + MessageGroupId) |
-| `validate_esm` | Valida event source mapping SQS → Lambda (UUID + estado Enabled) |
-| `put_eventbridge_target` | Configura target EventBridge com SqsParameters.MessageGroupId |
-| `ensure_iam_lambda_role` | Cria role IAM Lambda com AWSLambdaBasicExecutionRole (idempotente) |
-| `ensure_sqs_dlq` | Cria DLQ e retorna o ARN (FIFO ou Standard) |
-| `ensure_sqs_queue` | Cria fila SQS com DLQ, VisibilityTimeout, URL/ARN e validação |
-| `ensure_lambda_function` | Deploy Lambda com create/update, env vars e timeout |
-| `ensure_event_source_mapping` | Cria ou ignora event source mapping SQS → Lambda |
-| `setup_api_cors` | Configura OPTIONS + CORS completo em recurso do API Gateway |
-| `validate_resource_suffix` | Valida formato do RESOURCE_SUFFIX (apenas [a-z0-9-], max 20 char) |
-| `get_endpoint_url` | Monta URL do API Gateway ou S3 website conforme ambiente (AWS ou LocalStack) |
-| `poll_resource` | Polling generico com timeout configuravel para aguardar recursos ficarem prontos |
-| `ensure_api_resource_policy` | Aplica Resource Policy no API Gateway restringindo por IP (POST /test) |
-| `ensure_dlq_alarm` | Cria CloudWatch Alarm para DLQ com acao SNS |
-| `ensure_usage_plan_with_api_key` | Cria Usage Plan, API Key e associa ao stage prod |
-| `ensure_jwt_secret` | Gera ou le o segredo JWT de `scripts/.jwt-secret` (idempotente) |
+```bash
+./run.sh
+```
 
----
+### Executar testes E2E
 
-## 10. Guia de Testes e Validação
-
-O sistema pode ser validado de três formas: (1) via dashboard web, (2) via script automatizado, ou (3) via comandos manuais.
-
-### 10.1. Teste via Dashboard Web (Recomendado)
-Após executar `./run.sh`, o URL do dashboard é exibido no final do `deploy-frontend.sh`. Abra no navegador e utilize as abas:
-
-1. **Novo Pedido**: Preencha Cliente, Produto, Quantidade e Preco; clique em "Criar Pedido". Use "Automatico" para gerar dados aleatórios. Teste cenários de erro no collapsible "Cenarios de Erro".
-2. **Consultar**: Digite um Order ID e clique em "Consultar". Use "Ultimo Pedido" para preencher automaticamente o ID do último pedido criado.
-3. **Gerenciar**: Informe um Order ID e use "Cancelar Pedido" ou "Atualizar Pedido". Teste cenários de pedido inexistente no collapsible "Cenarios de Erro".
-4. **Upload**: Clique em "Gerar e Enviar Lote de Teste" para testar o fluxo de validação assíncrona via S3. Use "Listar Arquivos" para ver arquivos enviados. Teste schemas inválidos e arquivos corrompidos no collapsible "Cenarios de Erro".
-
-O painel lateral exibe logs em tempo real com status e payloads de cada operação.
-
-### 10.2. Teste via Script Automatizado
 ```bash
 ./scripts/validate-flow.sh
 ```
-Este script executa todos os deploy scripts e testa cada fluxo via AWS CLI, verificando a persistência no DynamoDB.
 
-### 10.3. Teste Manual via CLI
+25 testes que cobrem: criacao de pedidos, processamento S3 batch, lifecycle (cancelar/atualizar), duplicatas, consultas, alertas SNS, filas DLQ, catalogo, autenticacao JWT, gateway de pedidos, e frontends.
 
-#### API Flow
-```bash
-curl -k -X POST <URL_DO_ENDPOINT>/prod/orders \
-     -H "Content-Type: application/json" \
-     -d '{"pedidoId": "ORD-001", "clienteId": "CLIENTE-TESTE", "itens": [{"sku": "PROD-A", "qtd": 1}]}'
-```
+## Decisoes de Design em Destaque
 
-#### S3 Batch (Audit-Only)
-```bash
-aws s3 cp samples/valid_batch.json s3://order-files-bucket-<seu-sufixo>/
-```
+**Idempotencia por ConditionExpression no DynamoDB em vez de deduplicacao na fila.** A janela de 5 minutos do SQS FIFO impedia testes de duplicidade no frontend. A solucao foi usar `MessageDeduplicationId = uuid4()` (sempre unico) e delegar a deduplicacao de negocio ao `ConditionExpression: attribute_not_exists(orderId)` no DynamoDB, que e permanente e gera alerta SNS. Detalhes em [ARCHITECTURE.md#3-idempotencia-conditionexpression-vs-deduplicacao-na-fila](ARCHITECTURE.md#3-idempotencia-conditionexpression-vs-deduplicacao-na-fila).
 
-#### Lifecycle Operations
-```bash
-aws events put-events --entries "[{
-    \"Source\": \"app.orders.operations\",
-    \"DetailType\": \"OrderUpdated\",
-    \"Detail\": \"{\\\"pedidoId\\\": \\\"ORD-001\\\", \\\"novosItens\\\": [{\\\"sku\\\": \\\"PROD-B\\\", \\\"qtd\\\": 2}]}\",
-    \"EventBusName\": \"orders-event-bus-<seu-sufixo>\"
-}]"
-```
+**JWT implementado manualmente em stdlib Python sem dependencias externas.** A conta de laboratorio nao tem Cognito, Secrets Manager nem KMS CMK. O modulo `common/auth.py` implementa PBKDF2-SHA256 (200.000 iteracoes), HMAC-SHA256, e `compare_digest` contra timing attack. Sem `requirements.txt` ou camada Lambda. Detalhes em [ARCHITECTURE.md#4-seguranca-sem-waf-cognito-e-kms](ARCHITECTURE.md#4-seguranca-sem-waf-cognito-e-kms).
 
-#### Catalog (Course List)
-```bash
-# Listar cursos disponiveis
-curl -k <URL_DO_ENDPOINT>/prod/catalog
+**Resource Policy do API Gateway com padrao Allow geral + Deny condicional.** A implementacao inicial usava Allow-only com `IpAddress`, que bloqueava endpoints publicos (`POST /orders`, `GET /orders`) quando a restricao de IP era ativada. A correcao (Rodada 7) usou o padrao Allow geral para toda a API + Deny condicional restrito a `*/*/POST/test`, respeitando a precedencia do Deny sobre Allow. Detalhes em [ARCHITECTURE.md#4-seguranca-sem-waf-cognito-e-kms](ARCHITECTURE.md#4-seguranca-sem-waf-cognito-e-kms).
 
-# Detalhe de um curso
-curl -k <URL_DO_ENDPOINT>/prod/catalog/AWS-CP-001
-```
+**batchItemFailures em todas as Lambdas SQS para reprocessamento parcial de lote.** Sem essa configuracao, uma falha em uma das 5 mensagens do lote derrubava o lote inteiro, reprocessando mensagens ja bem-sucedidas. Com `ReportBatchItemFailures`, apenas os `messageId` com erro retornam na resposta, e as mensagens bem-sucedidas sao confirmadas. Detalhes em [ARCHITECTURE.md#2-resiliencia-dlq-batchitemfailures-e-visibilitytimeout](ARCHITECTURE.md#2-resiliencia-dlq-batchitemfailures-e-visibilitytimeout).
 
-#### Order Gateway (Autenticado)
-```bash
-# Obter token JWT
-TOKEN=$(curl -s -X POST <URL>/prod/customers/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"cliente@email.com","password":"senha"}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('token',''))")
+## Historico de Evolucao
 
-# Listar pedidos do cliente
-curl -k -H "Authorization: Bearer $TOKEN" <URL>/prod/orders
+| Rodada | Foco | Principal entrega |
+|---|---|---|
+| 1 | API + Validacao | API Gateway, pre_validator, order_validator, SQS FIFO, EventBridge |
+| 2 | S3 + Auditoria | batch_processor, S3 data lake, DynamoDB audit, SNS alerts |
+| 3 | Polimento | Restricao de permissoes, mensagens malformadas com SNS, correcoes de logging |
+| 4 | Lifecycle | lifecycle_ops (cancelar/atualizar), estado terminal CANCELLED, dedup movida para DynamoDB |
+| 5 | Seguranca e custo | Usage Plan + API Key, Resource Policy, Request Validator, DLQ alarms, TTL audit, Reserved Concurrency |
+| 6 | Correcoes | Diagrama Mermaid corrigido, Resource Policy refinada, cleanup completo |
+| 7 | Resource Policy | Allow geral + Deny condicional, padrao parse_body centralizado |
+| 8 | Identidade | customer_auth (cadastro/login/JWT), common/auth.py, tabela customer-data |
+| 9 | Catalogo | catalog_reader (vitrine publica), tabela course-catalog, seed de 11 cursos |
+| 10 | Gateway | order_gateway (CRUD autenticado), GSI clientId-index, ownership validation |
+| 11 | Frontend | CloudCert (produto), QA Dashboard preservado, deploy com 6 arquivos |
+| 12 | Documentacao | README orientado a portfolio, ARCHITECTURE.md, diagrama consolidado |
 
-# Consultar pedido especifico
-curl -k -H "Authorization: Bearer $TOKEN" <URL>/prod/orders/ORD-001
+## Licenca e Contato
 
-# Cancelar pedido (autenticado)
-curl -k -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{}' <URL>/prod/orders/ORD-001/cancel
-
-# Atualizar pedido (autenticado)
-curl -k -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"novosItens":[{"sku":"AWS-SAA-001","qtd":1,"preco":249.90}]}' \
-  <URL>/prod/orders/ORD-001
-```
-
-## 11. Troubleshooting e Resolução de Problemas
-
-Durante o desenvolvimento e implantação em ambientes reais da AWS ou LocalStack, alguns comportamentos comuns podem surgir. Abaixo estão as soluções aplicadas neste projeto:
-
-### 11.1. Atraso na Propagação de IAM (Eventual Consistency)
-**Problema:** O comando de criação da Lambda falha alegando que a Role não existe, mesmo após o comando de criação da Role ter retornado sucesso. </br>
-**Solução:** Substituição de `sleep` fixo por polling ativo com `aws iam wait role-exists` (função `wait_for_iam_role` em `scripts/lib.sh`). O polling tenta a cada 5 segundos por até 60 segundos.
-
-### 11.2. Erro de AccessDenied no S3 ou DynamoDB
-**Problema:** A Lambda é executada, mas falha ao tentar ler um arquivo no S3 ou gravar no DynamoDB. </br>
-**Causa:** Geralmente causada pela falta do caractere curinga `/*` no ARN do recurso na política IAM ou falta de permissões de leitura na Role. </br>
-**Solução:** Revisão das políticas inline para garantir que o recurso seja `arn:aws:s3:::bucket-name/*` e inclusão de permissões explícitas para `s3:GetObject` e `dynamodb:PutItem`.
-
-### 11.3. EventBridge não entrega mensagens no SQS FIFO
-**Problema:** O evento é publicado com sucesso no barramento, mas a fila SQS FIFO de destino permanece vazia. </br>
-**Causa 1:** A fila SQS precisa de uma **Resource-Based Policy** que autorize o serviço `events.amazonaws.com`. </br>
-**Causa 2:** Filas FIFO exigem o parâmetro `SqsParameters.MessageGroupId` no target da regra do EventBridge. Sem ele, a AWS rejeita a entrega. </br>
-**Solução:** Os scripts configuram automaticamente a política da fila com `Condition: SourceArn` e incluem `SqsParameters="{\"MessageGroupId\":\"...\"}"` no comando `put-targets`.
-
-### 11.4. Conflito de Mapeamento de Eventos (LocalStack)
-**Problema:** Erro `ResourceConflictException` ao tentar criar um gatilho SQS para uma Lambda que já possui esse mapeamento. </br>
-**Solução:** Adição de lógica de verificação idempotente nos scripts de deploy, utilizando queries JMESPath para verificar se o `UUID` do mapeamento já existe antes de tentar criá-lo.
-
-### 11.5. Erro de Resolução de Host (LocalStack)
-**Problema:** O comando `curl` falha com `Could not resolve host` ao tentar acessar o API Gateway localmente. </br>
-**Solução:** No ambiente LocalStack, a URL deve seguir o padrão `https://{api-id}.execute-api.localhost.localstack.cloud:4566`. O script de validação foi ajustado para detectar o ambiente e montar a URL correta.
-
-## 12. Resiliência com Dead Letter Queues (DLQ), Report Batch Item Failures e Monitoramento
-
-Todas as filas SQS deste projeto (Validação, Processamento, Alteração e Cancelamento) possuem uma DLQ associada.
-*   **Configuração:** `maxReceiveCount` definido como 3, `VisibilityTimeout` parametrizado (padrão: 360s).
-*   **Funcionamento:** Se uma Lambda falhar repetidamente ao processar uma mensagem (devido a erros de código ou indisponibilidade de recursos externos), a mensagem é movida para a DLQ após a terceira tentativa. Isso evita o bloqueio da fila principal.
-*   **Report Batch Item Failures:** Todas as Lambdas acionadas por SQS implementam o padrão `batchItemFailures`, retornando apenas os `messageId` que falharam. Mensagens processadas com sucesso no mesmo lote não são reprocessadas, reduzindo o impacto de falhas parciais.
-*   **Monitoramento de DLQs:** Cada DLQ possui um CloudWatch Alarm monitorando a métrica `ApproximateNumberOfMessagesVisible`. Quando mensagens acumulam na DLQ (threshold >= 1), um alarme é disparado para o tópico SNS de notificações, enviando email. São 5 alarmes ativos: validation-dlq, persister-dlq, cancel-dlq, update-dlq e s3-batch-dlq.
-*   **Nota:** Filas padrão (batch S3) também possuem DLQ.
-
-## 13. Frontend
-
-O bucket S3 serve dois frontends:
-
-- **`index.html` (CloudCert):** Produto para usuario final com autenticacao JWT, catalogo de cursos, meus pedidos e ciclo de vida (cancelar/atualizar).
-- **`qa.html` (QA Dashboard):** Painel de QA interno, preservado das rodadas anteriores para validacao do pipeline de deploy.
-
-### 13.1. CloudCert (Produto)
-
-| Recurso | Descricao |
-|---------|-----------|
-| **Autenticacao** | Login e cadastro com JWT armazenado em `localStorage`. Validacao client-side de senha. |
-| **Catalogo** | Cards de curso com badges de provider (AWS/Azure/GCP) e tipo (Curso/Voucher). Filtros por provedor e tipo sem recarregar pagina. |
-| **Compra** | Botao "Comprar" em cada card -> `POST /orders` com `clienteId` do JWT -> feedback com alerta -> navegacao para "Meus Pedidos". |
-| **Meus Pedidos** | Lista ordenada por data com badge de status colorido (PROCESSED, UPDATED, CANCELLED). |
-| **Detalhe** | Card com dados do pedido, tabela de itens, botoes de cancelar e atualizar. |
-| **Cancelar** | Confirmacao -> `POST /orders/{orderId}/cancel` -> feedback assincrono -> refresh apos 3s. |
-| **Atualizar** | Form com select do catalogo -> `PATCH /orders/{orderId}` -> feedback assincrono. |
-
-### 13.2. QA Dashboard
-
-Acessivel em `/qa.html`. Dividido em 4 abas, cada uma correspondendo a um fluxo do sistema:
-
-| Aba | Acoes de Sucesso | Acoes de Falha |
-|-----|-----------------|----------------|
-| **Novo Pedido** | Criar Pedido -> pre_validator -> SQS FIFO -> order_validator -> EventBridge -> Processor -> DynamoDB | Faltando pedidoId (400), Faltando clienteId (400), JSON Invalido (400), Enviar Duplicata (ConditionalCheckFailedException -> alerta SNS) |
-| **Upload** | Gerar e Enviar Lote de Teste (lista_pedidos valido -> DynamoDB Audit) | Schema Invalido (-> SNS Alert), Arquivo Corrompido (-> SNS Alert) |
-| **Gerenciar** | Cancelar Pedido, Atualizar Pedido (EventBridge -> SQS FIFO -> Lifecycle Lambda -> DynamoDB) | Cancelar Inexistente, Atualizar Inexistente (ConditionalCheckFailedException -> alerta SNS) |
-| **Consultar** | Consultar (GET /orders/{id} -> DynamoDB) | Pedido Inexistente (404) |
-
-### 13.3. Componentes do Frontend
-
-| Arquivo | Descricao |
-|---------|-----------|
-| `frontend/index.html` | Produto CloudCert: autenticacao, catalogo, meus pedidos, detalhe. |
-| `frontend/app.js` | Logica do produto: init, auth, catalogo, pedidos, ciclo de vida. |
-| `frontend/qa.html` | Painel de QA interno (dashboard original das rodadas anteriores). |
-| `frontend/qa.js` | Logica do QA: testes de API, consulta, lifecycle, S3 batch. |
-| `frontend/style.css` | Tema escuro responsivo e estilos do produto. |
-| `frontend/config.template.js` | Template com placeholders processado pelo deploy. |
-
-### 13.3. Novas Lambdas
-
-| Lambda | Endpoint | Função |
-|--------|----------|--------|
-| `read_order` | `GET /orders/{orderId}` | Consulta DynamoDB production e retorna o pedido ou 404 |
-| `test_controller` | `POST /test` | Roteia por ação (`publish_event`, `upload_file`, `list_files`) para testar lifecycle e S3 |
-
-### 13.4. API Key para rota /test
-
-O endpoint `POST /test` exige uma API Key para ser acessado. A chave é gerada automaticamente durante o deploy e salva em `scripts/.api-key`. O frontend envia a chave no header `x-api-key` em todas as chamadas para `/test`.
-
-- Chamadas sem o header `x-api-key` retornam `403 Forbidden`.
-- Chamadas com a chave correta funcionam normalmente.
-- As rotas `POST /orders` e `GET /orders/{orderId}` continuam sem exigir API Key (rotas de demonstração pública do fluxo principal).
-
-O Usage Plan associado aplica throttle de 5 req/s com burst de 10 e quota de 1000 requisições por dia.
-
-### 13.5. Painel de Logs
-
-O dashboard exibe um painel lateral com logs em tempo real de cada operação, utilizando cores Bootstrap para indicar o status:
-- <span style="color:var(--bs-success-text)">**Verde**</span>: Operação bem-sucedida (status 200/201 esperado)
-- <span style="color:var(--bs-danger-text)">**Vermelho**</span>: Falha inesperada
-- <span style="color:var(--bs-warning-text)">**Amarelo**</span>: Operação em andamento ou falha esperada
-
-Cada entrada mostra timestamp, nome do teste, status HTTP e payload completo da resposta. Os cards de resultado inline utilizam ícones `check_circle` (sucesso), `error` (erro) e `warning` (aviso) do Material Icons.
-
-### 13.6. Fluxos de Notificação SNS (E-mail)
-
-| Gatilho | O que falha | Envia E-mail? |
-|---------|------------|:---:|
-| S3: Upload Invalid Schema | `file_validator` → `ValueError` (lista_pedidos ausente) | Sim |
-| S3: Upload Corrupt File | `file_validator` → exceção de parse JSON | Sim |
-| API: Duplicate Order | `order_processor` → `ConditionalCheckFailedException` (log + alerta SNS, sem DLQ) | Sim |
-| Lifecycle: Non-existent | `cancel_processor`/`update_processor` → `ConditionalCheckFailedException` (log + alerta SNS, sem DLQ) | Sim |
-| API: Validation Error | `order_validator` → erro no EventBridge ou parse (alerta SNS + DLQ após 3 retries) | Sim |
-
----
-**Desenvolvido por [José Anderson](https://github.com/DessimA)**
-
----
+Distribuido sob licenca MIT. Projeto desenvolvido por [Jose Anderson](https://github.com/DessimA).
