@@ -31,8 +31,8 @@ Este projeto e material de portfolio. Cada decisão técnica foi tomada com cons
 ## Arquitetura
 
 ```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 20, 'rankSpacing': 30, 'padding': 6}}}%%
-flowchart LR
+%%{init: {'flowchart': {'nodeSpacing': 15, 'rankSpacing': 25, 'padding': 6}}}%%
+flowchart TD
     subgraph Cliente["Cliente Final"]
         Browser["Browser index.html"]
     end
@@ -137,33 +137,33 @@ flowchart LR
         L6["Processamento Batch S3"]:::l_batch
     end
 
-    style Cliente fill:#1A237E,color:#fff,stroke:#0D47A1
-    style QA_Ferramenta fill:#311B92,color:#fff,stroke:#4527A0
-    style S3FE fill:#004D40,color:#fff,stroke:#00695C
-    style APIGW fill:#E65100,color:#fff,stroke:#EF6C00
-    style LambdaIngestao fill:#01579B,color:#fff,stroke:#0277BD
-    style LambdaProduto fill:#1B5E20,color:#fff,stroke:#2E7D32
-    style LambdaProcessamento fill:#0D47A1,color:#fff,stroke:#1565C0
-    style SQS_Filas fill:#3E2723,color:#fff,stroke:#4E342E
-    style DynamoDB_Tables fill:#4A148C,color:#fff,stroke:#6A1B9A
-    style EventBridge_Bus fill:#880E4F,color:#fff,stroke:#AD1457
-    style SNS_CW fill:#BF360C,color:#fff,stroke:#D84315
-    style S3Dados fill:#006064,color:#fff,stroke:#00838F
+    style Cliente fill:#7986CB,color:#fff,stroke:#5C6BC0
+    style QA_Ferramenta fill:#9FA8DA,color:#fff,stroke:#7986CB
+    style S3FE fill:#5C6BC0,color:#fff,stroke:#3F51B5
+    style APIGW fill:#3F51B5,color:#fff,stroke:#3949AB
+    style LambdaIngestao fill:#3949AB,color:#fff,stroke:#303F9F
+    style LambdaProduto fill:#303F9F,color:#fff,stroke:#283593
+    style LambdaProcessamento fill:#283593,color:#fff,stroke:#1A237E
+    style SQS_Filas fill:#00838F,color:#fff,stroke:#006064
+    style DynamoDB_Tables fill:#1A237E,color:#fff,stroke:#283593
+    style EventBridge_Bus fill:#006064,color:#fff,stroke:#00838F
+    style SNS_CW fill:#37474F,color:#fff,stroke:#455A64
+    style S3Dados fill:#283593,color:#fff,stroke:#1A237E
     style Legend fill:#F5F5F5,color:#333,stroke:#9E9E9E
 
-    classDef l_http fill:#1565C0,color:#fff,stroke:#1565C0
-    classDef l_ing fill:#2E7D32,color:#fff,stroke:#2E7D32
-    classDef l_route fill:#E65100,color:#fff,stroke:#E65100
-    classDef l_data fill:#6A1B9A,color:#fff,stroke:#6A1B9A
+    classDef l_http fill:#5C6BC0,color:#fff,stroke:#5C6BC0
+    classDef l_ing fill:#3949AB,color:#fff,stroke:#3949AB
+    classDef l_route fill:#303F9F,color:#fff,stroke:#303F9F
+    classDef l_data fill:#1A237E,color:#fff,stroke:#1A237E
     classDef l_event fill:#00838F,color:#fff,stroke:#00838F
-    classDef l_batch fill:#4E342E,color:#fff,stroke:#4E342E
+    classDef l_batch fill:#006064,color:#fff,stroke:#006064
 
-    linkStyle 0,1,2,3,4,5,6,7,8,9,10,11,12 stroke:#1565C0,stroke-width:2px
-    linkStyle 13,14,15,16 stroke:#2E7D32,stroke-width:2px
-    linkStyle 17,18,19,20,21,22,23,24,25,26 stroke:#E65100,stroke-width:2px
-    linkStyle 27,28,29,30,31,32 stroke:#6A1B9A,stroke-width:2px
+    linkStyle 0,1,2,3,4,5,6,7,8,9,10,11,12 stroke:#5C6BC0,stroke-width:2px
+    linkStyle 13,14,15,16 stroke:#3949AB,stroke-width:2px
+    linkStyle 17,18,19,20,21,22,23,24,25,26 stroke:#303F9F,stroke-width:2px
+    linkStyle 27,28,29,30,31,32 stroke:#1A237E,stroke-width:2px
     linkStyle 33,34,35,36,37,38,39,40,41 stroke:#00838F,stroke-width:2px
-    linkStyle 42,43,44 stroke:#4E342E,stroke-width:2px
+    linkStyle 42,43,44 stroke:#006064,stroke-width:2px
 ```
 
 Para decisões detalhadas de design, veja [ARCHITECTURE.md](ARCHITECTURE.md).
