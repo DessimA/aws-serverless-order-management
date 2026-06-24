@@ -152,7 +152,93 @@ Este documento descreve cada problema identificado, a correção aplicada e a ju
 
 **Validação:** Validação visual.
 
+### 9. [CORRECAO] GSI query null em `deploy-order-gateway.sh`
+
+**Localizacao:** `scripts/deploy-order-gateway.sh`
+
+**Problema:** A query `length(Table.GlobalSecondaryIndexes[?IndexName=='clientId-index'])` retorna `null` no JMESPath quando a tabela nao possui GSIs. Com `--output text`, `null` e convertido para a string `"None"`. O teste `[ "$GSI_COUNT" = "0" ]` falha com `"None"`, e o GSI nunca e criado em um deploy limpo.
+
+**Correcao:** Adicionada normalizacao `if [ "$GSI_COUNT" = "None" ]; then GSI_COUNT="0"; fi` apos a query.
+
+**Justificativa:** O JMESPath `length(null)` nao lanca erro, apenas retorna `null`. O `|| echo "0"` nao captura este caso porque o comando nao falha. A normalizacao pos-query e a forma mais simples e explicita de tratar o caso.
+
+**Validacao:** `aws dynamodb describe-table` em tabela sem GSIs retorna `GSI_COUNT="0"` apos a correcao, e o GSI e criado corretamente.
+
+### 10. [CORRECAO] `create_jwt` muta payload do caller em `auth.py`
+
+**Localizacao:** `src/common/auth.py`
+
+**Problema:** `create_jwt` modifica o dicionario `payload` recebido como argumento, adicionando `iat` e `exp` ao dicionario original. Isso pode causar efeitos colaterais no caller, que ve seu dicionario alterado apos a chamada.
+
+**Correcao:** Substituido `payload["iat"] = ...; payload["exp"] = ...` por `payload = {**payload, "iat": now, "exp": now + expires_in_seconds}`, criando um novo dicionario sem modificar o original.
+
+**Justificativa:** Mutacao de argumentos e uma fonte comum de bugs sutis. A sintaxe `{**payload, ...}` cria uma copia superficial e e consistente com Python 3.5+.
+
+**Validacao:** Teste unitario ou inspecao visual: caller pode reutilizar o mesmo dicionario `payload` apos `create_jwt` sem efeitos colaterais.
+
+### 11. [REMOCAO] Codigo morto em `order_gateway/index.py`
+
+**Localizacao:** `src/order_gateway/index.py`
+
+**Problema:** A classe `_DecimalEncoder` (9 linhas) e o import `from common.utils import utcnow_iso` nunca sao utilizados. O `utcnow_iso` nao e chamado em nenhum handler. O `_DecimalEncoder` ja existe em `common/http.py` e e usado internamente por `api_response`.
+
+**Correcao:** Removidos a classe `_DecimalEncoder`, os imports `from decimal import Decimal` e `from common.utils import utcnow_iso`.
+
+**Justificativa:** Codigo morto aumenta a superficie de manutencao e pode causar confusao para leitores futuros. O `_DecimalEncoder` em `http.py` ja atende todos os usos.
+
+**Validacao:** `python3 -c "from order_gateway.index import lambda_handler"` (apos correcao) nao lanca erro.
+
+### 12. [ATUALIZACAO] `validate_lambda_config` ausente em dois scripts de deploy
+
+**Localizacao:** `scripts/deploy-customer-auth.sh`, `scripts/deploy-order-gateway.sh`
+
+**Problema:** A funcao `validate_lambda_config` (que verifica timeout=60 e variaveis de ambiente obrigatorias) nao era chamada apos `ensure_lambda_function` em `deploy-customer-auth.sh` e `deploy-order-gateway.sh`. Todos os outros scripts de deploy chamam `validate_lambda_config`.
+
+**Correcao:** Adicionada chamada a `validate_lambda_config` apos cada `ensure_lambda_function` em ambos os scripts, com as variaveis de ambiente esperadas.
+
+**Justificativa:** Consistencia com os demais scripts e garantia de que as Lambdas estao configuradas corretamente apos o deploy.
+
+**Validacao:** `grep validate_lambda_config scripts/deploy-customer-auth.sh scripts/deploy-order-gateway.sh` confirma presenca.
+
+### 13. [CORRECAO] `CORS_HEADERS` incompleto em `common/http.py`
+
+**Localizacao:** `src/common/http.py`
+
+**Problema:** `CORS_HEADERS` permitia apenas `GET,POST,OPTIONS` e `Content-Type` no header. O frontend envia `Authorization: Bearer <token>` e usa `PATCH` para atualizacao de pedidos. Requisicoes PATCH com token sofriam CORS preflight failure.
+
+**Correcao:** Adicionados `PATCH` aos metodos e `Authorization` aos headers permitidos.
+
+**Justificativa:** O header `Authorization` e obrigatorio para requisicoes autenticadas. O metodo `PATCH` e usado pelo frontend para `submitUpdate`.
+
+**Validacao:** Teste 24 em `validate-flow.sh` (PATCH /orders/{orderId}) passa sem CORS failure.
+
+### 14. [CORRECAO] `renderOrderDetail` nao esconde `update-form` em `frontend/app.js`
+
+**Localizacao:** `frontend/app.js`
+
+**Problema:** `renderOrderDetail` popula o card de detalhe e os botoes de acao, mas nao esconde o formulario `update-form`. Se o usuario abre o formulario no pedido A, depois navega para o pedido B, o formulario permanece visivel com dados do select do pedido A.
+
+**Correcao:** Adicionada linha `document.getElementById('update-form').classList.add('d-none')` no inicio de `renderOrderDetail`, antes de qualquer manipulacao do DOM.
+
+**Justificativa:** `showUpdateForm` usa `classList.toggle('d-none')` para exibir/esconder o formulario. Resetar o estado para `d-none` em cada `renderOrderDetail` garante que a view comeca limpa.
+
+**Validacao:** Abrir formulario de atualizacao no pedido A, clicar em "Ver Detalhes" do pedido B: formulario nao deve estar visivel.
+
+### 15. [ATUALIZACAO] Teste 12 em `validate-flow.sh` sem `order-gateway`
+
+**Localizacao:** `scripts/validate-flow.sh`
+
+**Problema:** O teste 12 (Reserved Concurrency Verification) verificava apenas `order-persister` e `order-reader`. A Lambda `order-gateway` (com reserved_concurrency=10) nao era verificada.
+
+**Correcao:** Adicionado `order-gateway-$RESOURCE_SUFFIX` ao loop de verificacao, com `EXPECTED_RC="10"`.
+
+**Justificativa:** Todas as Lambdas com reserved concurrency configurado devem ser verificadas para garantir consistencia pos-deploy.
+
+**Validacao:** Teste 12 em `validate-flow.sh` agora tambem valida `order-gateway`.
+
 ---
+
+## Rodada 9
 
 ### 1. [NOVA FUNCIONALIDADE] Lambda `catalog_reader` - Endpoints públicos de catálogo
 
