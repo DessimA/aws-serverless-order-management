@@ -29,3 +29,4 @@ A arquitetura e orientada a eventos. Nenhuma chamada sincrona cruza fronteiras d
 - Log retention de 14 dias em todos os grupos de log CloudWatch
 - DLQ com `maxReceiveCount=3` e CloudWatch Alarm para cada fila
 - TTL de 90 dias na tabela de auditoria DynamoDB
+
