@@ -1,23 +1,14 @@
 import os
 import json
 import boto3
-from decimal import Decimal
 from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key
 from common.auth import decode_jwt
 from common.http import api_response, error_response
-from common.utils import utcnow_iso
 
 table = boto3.resource("dynamodb").Table(os.environ["DYNAMODB_TABLE"])
 eventbridge = boto3.client("events")
 JWT_SECRET = os.environ["JWT_SECRET"]
-
-
-class _DecimalEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, Decimal):
-            return float(obj)
-        return super().default(obj)
 
 
 def _require_auth(event):
