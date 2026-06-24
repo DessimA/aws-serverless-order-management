@@ -174,3 +174,13 @@ Script separado de `deploy-order-processor.sh` por tres razoes:
 - Teste 22: GET /orders/{orderId} - valida dono (404 para pedido de outro cliente).
 - Teste 23: POST /orders/{orderId}/cancel - cancelamento autenticado, verifica 202 e status final CANCELLED.
 - Teste 24: PATCH /orders/{orderId} - atualização autenticada, verifica 202 e status final UPDATED.
+
+## `deploy-frontend.sh` (Rodada 11)
+
+- Adicionado suporte a deploy de `qa.html`/`qa.js` (painel de QA) e `index.html`/`app.js` (frontend CloudCert).
+- Placeholders `CATALOG_ENDPOINT`, `ORDERS_ENDPOINT` e `CUSTOMERS_ENDPOINT` resolvidos de `config.template.js` via sed.
+- Validacao de presenca de ambos os HTMLs apos sync no S3.
+
+## `validate-flow.sh` (Rodada 11)
+
+- Teste 25: `$FRONTEND_URL/qa.html` retorna 200 e `$FRONTEND_URL` (index.html) retorna 200.
