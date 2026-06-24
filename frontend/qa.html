@@ -12,12 +12,17 @@
 
     <!-- ===== HEADER ===== -->
     <header class="border-bottom border-secondary border-opacity-25 px-3 px-md-4 py-3 d-flex align-items-center gap-3 bg-body-tertiary">
-        <h1 class="h5 mb-0">Order Management System</h1>
+        <div class="d-flex align-items-center gap-2">
+            <div class="cc-header-logo">
+                <span class="cc-header-logo-text">CC</span>
+            </div>
+            <h1 class="h5 mb-0">CloudCert QA</h1>
+        </div>
         <span class="text-secondary small d-none d-sm-inline">QA Dashboard</span>
         <div class="ms-auto d-flex align-items-center gap-2">
             <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 d-none" id="lastOrderBadge">
                 <span class="material-icons fs-6 align-text-bottom me-1">history</span>
-                Ultimo: <strong id="lastOrderDisplay" class="font-monospace"></strong>
+                Último: <strong id="lastOrderDisplay" class="font-monospace"></strong>
             </span>
             <span class="badge bg-dark text-secondary border border-secondary border-opacity-25 font-monospace small" id="envBadge"></span>
         </div>
@@ -55,12 +60,12 @@
                 <!-- ===== TAB 1: NOVO PEDIDO ===== -->
                 <div class="tab-pane fade show active" id="tab-create">
                     <h2 class="h5 mb-1">Novo Pedido</h2>
-                    <p class="text-secondary small mb-3">Crie um pedido de forma simples ou gere um automatico com 1 clique.</p>
+                    <p class="text-secondary small mb-3">Crie um pedido de forma simples ou gere um automático com 1 clique.</p>
 
                     <div class="row g-3 mb-3">
                         <div class="col-12 col-md-6">
                             <label for="createCliente" class="form-label small">Cliente</label>
-                            <input type="text" class="form-control" id="createCliente" value="Joao Silva" placeholder="Nome do cliente">
+                            <input type="text" class="form-control" id="createCliente" value="João Silva" placeholder="Nome do cliente">
                         </div>
                     </div>
                     <div class="row g-3 mb-3">
@@ -73,7 +78,7 @@
                             <input type="number" class="form-control" id="createQtd" value="1" min="1">
                         </div>
                         <div class="col-6 col-md-3">
-                            <label for="createPreco" class="form-label small">Preco (R$)</label>
+                            <label for="createPreco" class="form-label small">Preço (R$)</label>
                             <input type="number" class="form-control" id="createPreco" value="149.90" step="0.01" min="0">
                         </div>
                     </div>
@@ -85,21 +90,21 @@
                         </button>
                         <button class="btn btn-outline-secondary" data-action="testAPI" data-scenario="auto">
                             <span class="material-icons me-1 align-text-bottom">auto_fix_high</span>
-                            Automatico
+                            Automático
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#createErrors">
                             <span class="material-icons fs-6 align-text-bottom me-1">bug_report</span>
-                            Cenarios de Erro
+                            Cenários de Erro
                         </button>
                     </div>
 
                     <div class="collapse mb-3" id="createErrors">
                         <div class="card card-body border-secondary bg-body-tertiary py-2">
-                            <p class="small text-secondary mb-2">Teste como o sistema reage a dados invalidos.</p>
+                            <p class="small text-secondary mb-2">Teste como o sistema reage a dados inválidos.</p>
                             <div class="d-flex flex-wrap gap-2">
                                 <button class="btn btn-outline-danger btn-sm" data-action="testAPI" data-scenario="missing-pedido">Faltando pedidoId</button>
                                 <button class="btn btn-outline-danger btn-sm" data-action="testAPI" data-scenario="missing-cliente">Faltando clienteId</button>
-                                <button class="btn btn-outline-danger btn-sm" data-action="testAPI" data-scenario="invalid-json">JSON Invalido</button>
+                                <button class="btn btn-outline-danger btn-sm" data-action="testAPI" data-scenario="invalid-json">JSON Inválido</button>
                                 <button class="btn btn-outline-warning btn-sm" data-action="testAPI" data-scenario="duplicate">Enviar Duplicata</button>
                             </div>
                         </div>
@@ -123,7 +128,7 @@
                             </button>
                             <button class="btn btn-outline-secondary" data-action="testRead" data-scenario="last">
                                 <span class="material-icons me-1 align-text-bottom">history</span>
-                                Ultimo Pedido
+                                Último Pedido
                             </button>
                         </div>
                     </div>
@@ -131,13 +136,13 @@
                     <div class="d-flex flex-wrap gap-2 mb-2">
                         <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#consultErrors">
                             <span class="material-icons fs-6 align-text-bottom me-1">bug_report</span>
-                            Cenarios de Erro
+                            Cenários de Erro
                         </button>
                     </div>
 
                     <div class="collapse mb-3" id="consultErrors">
                         <div class="card card-body border-secondary bg-body-tertiary py-2">
-                            <p class="small text-secondary mb-2">Teste a consulta de um pedido que nao existe.</p>
+                            <p class="small text-secondary mb-2">Teste a consulta de um pedido que não existe.</p>
                             <div class="d-flex flex-wrap gap-2">
                                 <button class="btn btn-outline-danger btn-sm" data-action="testRead" data-scenario="nonexistent">Pedido Inexistente</button>
                             </div>
@@ -174,7 +179,7 @@
                             <input type="number" class="form-control" id="mgmtQtd" value="3" min="1">
                         </div>
                         <div class="col-6 col-md-3">
-                            <label for="mgmtPreco" class="form-label small">Preco (R$)</label>
+                            <label for="mgmtPreco" class="form-label small">Preço (R$)</label>
                             <input type="number" class="form-control" id="mgmtPreco" value="199.90" step="0.01" min="0">
                         </div>
                     </div>
@@ -190,13 +195,13 @@
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#manageErrors">
                             <span class="material-icons fs-6 align-text-bottom me-1">bug_report</span>
-                            Cenarios de Erro
+                            Cenários de Erro
                         </button>
                     </div>
 
                     <div class="collapse mb-3" id="manageErrors">
                         <div class="card card-body border-secondary bg-body-tertiary py-2">
-                            <p class="small text-secondary mb-2">Teste o comportamento com pedidos que nao existem.</p>
+                            <p class="small text-secondary mb-2">Teste o comportamento com pedidos que não existem.</p>
                             <div class="d-flex flex-wrap gap-2">
                                 <button class="btn btn-outline-danger btn-sm" data-action="testLifecycle" data-scenario="cancel-nonexistent">Cancelar Inexistente</button>
                                 <button class="btn btn-outline-danger btn-sm" data-action="testLifecycle" data-scenario="update-nonexistent">Atualizar Inexistente</button>
@@ -224,15 +229,15 @@
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#batchErrors">
                             <span class="material-icons fs-6 align-text-bottom me-1">bug_report</span>
-                            Cenarios de Erro
+                            Cenários de Erro
                         </button>
                     </div>
 
                     <div class="collapse mb-3" id="batchErrors">
                         <div class="card card-body border-secondary bg-body-tertiary py-2">
-                            <p class="small text-secondary mb-2">Teste o tratamento de arquivos invalidos.</p>
+                            <p class="small text-secondary mb-2">Teste o tratamento de arquivos inválidos.</p>
                             <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-outline-danger btn-sm" data-action="testS3" data-scenario="invalid-schema">Schema Invalido</button>
+                                <button class="btn btn-outline-danger btn-sm" data-action="testS3" data-scenario="invalid-schema">Schema Inválido</button>
                                 <button class="btn btn-outline-danger btn-sm" data-action="testS3" data-scenario="corrupt">Arquivo Corrompido</button>
                             </div>
                         </div>
@@ -254,7 +259,7 @@
                 <button class="btn btn-sm btn-outline-secondary" data-action="clearLog">Limpar</button>
             </div>
             <div class="overflow-y-auto p-2" id="logContainer" style="max-height: calc(100vh - 110px);">
-                <p class="text-center text-secondary small py-4 mb-0 log-empty">Clique em qualquer acao para comecar.</p>
+                <p class="text-center text-secondary small py-4 mb-0 log-empty">Clique em qualquer ação para começar.</p>
             </div>
         </aside>
 
