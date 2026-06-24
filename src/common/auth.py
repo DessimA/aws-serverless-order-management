@@ -31,9 +31,9 @@ def _b64url_decode(data):
 def create_jwt(payload, secret, expires_in_seconds):
     header = {"alg": "HS256", "typ": "JWT"}
     now = int(time.time())
-    payload = {**payload, "iat": now, "exp": now + expires_in_seconds}
+    claims = {**payload, "iat": now, "exp": now + expires_in_seconds}
     header_b64 = _b64url_encode(json.dumps(header).encode())
-    payload_b64 = _b64url_encode(json.dumps(payload).encode())
+    payload_b64 = _b64url_encode(json.dumps(claims).encode())
     signing_input = f"{header_b64}.{payload_b64}".encode()
     signature = hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
     sig_b64 = _b64url_encode(signature)
