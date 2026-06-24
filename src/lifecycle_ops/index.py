@@ -2,7 +2,7 @@ import os
 import boto3
 from decimal import Decimal
 from botocore.exceptions import ClientError
-from common.sqs import parse_detail
+from common.sqs import parse_detail, parse_body
 from common.sns import publish_error
 from common.utils import utcnow_iso, log_event
 
@@ -44,7 +44,8 @@ def _handler(event, context, operation):
     batch_item_failures = []
     for record in event["Records"]:
         try:
-            payload = parse_detail(record)
+            envelope = parse_body(record)
+            payload = parse_detail(record, envelope=envelope)
             order_id = payload.get("pedidoId")
             if operation == "cancel":
                 if order_id:
