@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CloudCert - Cursos e Vouchers de Certificacao</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..700;1,14..32,300..700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
@@ -12,55 +15,78 @@
 
     <!-- VIEW AUTH -->
     <div id="view-auth">
-        <div class="container" style="max-width:420px;padding-top:12vh;">
-            <div class="text-center mb-4">
-                <span class="material-icons text-primary" style="font-size:3rem;">school</span>
-                <h2 class="h4 mt-2">CloudCert</h2>
-                <p class="text-secondary small">Cursos e Vouchers de Certificacao</p>
-            </div>
-            <div class="card border-secondary">
-                <div class="card-body p-4">
-                    <ul class="nav nav-tabs nav-justified mb-3" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="login-tab" data-bs-toggle="tab" data-bs-target="#auth-login" type="button" role="tab">Entrar</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="register-tab" data-bs-toggle="tab" data-bs-target="#auth-register" type="button" role="tab">Criar Conta</button>
-                        </li>
-                    </ul>
-                    <div class="tab-content">
-                        <div class="tab-pane fade show active" id="auth-login" role="tabpanel">
-                            <form id="login-form" onsubmit="return false;">
-                                <div class="mb-3">
-                                    <label for="login-email" class="form-label small">Email</label>
-                                    <input type="email" class="form-control" id="login-email" placeholder="seu@email.com" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="login-password" class="form-label small">Senha</label>
-                                    <input type="password" class="form-control" id="login-password" placeholder="Sua senha" required>
-                                </div>
-                                <button type="submit" class="btn btn-primary w-100" onclick="handleLogin()">Entrar</button>
-                            </form>
-                        </div>
-                        <div class="tab-pane fade" id="auth-register" role="tabpanel">
-                            <form id="register-form" onsubmit="return false;">
-                                <div class="mb-3">
-                                    <label for="register-email" class="form-label small">Email</label>
-                                    <input type="email" class="form-control" id="register-email" placeholder="seu@email.com" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="register-password" class="form-label small">Senha</label>
-                                    <input type="password" class="form-control" id="register-password" placeholder="Minimo 8 caracteres" required minlength="8">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="register-confirm" class="form-label small">Confirmar Senha</label>
-                                    <input type="password" class="form-control" id="register-confirm" placeholder="Repita a senha" required minlength="8">
-                                </div>
-                                <button type="submit" class="btn btn-primary w-100" onclick="handleRegister()">Criar Conta</button>
-                            </form>
-                        </div>
+        <div class="auth-scene">
+            <div class="auth-glow"></div>
+            <div class="container auth-container">
+                <div class="text-center mb-5">
+                    <div class="brand-mark mb-3">
+                        <span class="material-icons">school</span>
                     </div>
-                    <div id="auth-error" class="alert alert-danger small mt-3 d-none" role="alert"></div>
+                    <h1 class="brand-name">CloudCert</h1>
+                    <p class="text-secondary small">Prepare-se para certificacoes AWS, Azure e GCP</p>
+                </div>
+
+                <div class="card auth-card">
+                    <div class="card-body p-4 p-md-5">
+                        <ul class="nav nav-tabs nav-justified mb-4" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="login-tab" data-bs-toggle="tab" data-bs-target="#auth-login" type="button" role="tab">Entrar</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="register-tab" data-bs-toggle="tab" data-bs-target="#auth-register" type="button" role="tab">Criar Conta</button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content">
+                            <div class="tab-pane fade show active" id="auth-login" role="tabpanel">
+                                <form id="login-form" onsubmit="return false;">
+                                    <div class="mb-3">
+                                        <label for="login-email" class="form-label small fw-medium">Email</label>
+                                        <input type="email" class="form-control cc-input" id="login-email" placeholder="seu@email.com" required>
+                                    </div>
+                                    <div class="mb-4">
+                                        <label for="login-password" class="form-label small fw-medium">Senha</label>
+                                        <input type="password" class="form-control cc-input" id="login-password" placeholder="Sua senha" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary w-100 cc-btn-primary" onclick="handleLogin()">
+                                        <span class="material-icons fs-6 align-text-bottom me-1">login</span>
+                                        Entrar
+                                    </button>
+                                </form>
+                            </div>
+
+                            <div class="tab-pane fade" id="auth-register" role="tabpanel">
+                                <form id="register-form" onsubmit="return false;">
+                                    <div class="mb-3">
+                                        <label for="register-email" class="form-label small fw-medium">Email</label>
+                                        <input type="email" class="form-control cc-input" id="register-email" placeholder="seu@email.com" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="register-password" class="form-label small fw-medium">Senha</label>
+                                        <input type="password" class="form-control cc-input" id="register-password" placeholder="Minimo 8 caracteres" required minlength="8">
+                                    </div>
+                                    <div class="mb-4">
+                                        <label for="register-confirm" class="form-label small fw-medium">Confirmar Senha</label>
+                                        <input type="password" class="form-control cc-input" id="register-confirm" placeholder="Repita a senha" required minlength="8">
+                                    </div>
+                                    <button type="submit" class="btn btn-primary w-100 cc-btn-primary" onclick="handleRegister()">
+                                        <span class="material-icons fs-6 align-text-bottom me-1">person_add</span>
+                                        Criar Conta
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div id="auth-error" class="alert alert-danger small mt-4 py-2 mb-0 d-none" role="alert"></div>
+                    </div>
+                </div>
+
+                <div class="auth-providers mt-4">
+                    <span class="provider-dot aws">AWS</span>
+                    <span class="auth-divider"></span>
+                    <span class="provider-dot azure">Azure</span>
+                    <span class="auth-divider"></span>
+                    <span class="provider-dot gcp">GCP</span>
                 </div>
             </div>
         </div>
@@ -70,77 +96,100 @@
     <div id="view-app" style="display:none;">
 
         <!-- HEADER -->
-        <header class="border-bottom border-secondary border-opacity-25 px-3 px-md-4 py-2 d-flex align-items-center gap-3 bg-body-tertiary">
-            <span class="material-icons text-primary me-1">school</span>
-            <span class="fw-semibold">CloudCert</span>
-            <nav class="ms-3 d-flex gap-1">
-                <button class="btn btn-sm nav-btn active" data-view="catalog" onclick="showView('catalog')">
-                    <span class="material-icons fs-6 align-text-bottom me-1">store</span>Catalogo
+        <header class="cc-header">
+            <div class="cc-header-brand">
+                <span class="material-icons text-primary">school</span>
+                <span class="brand-label">CloudCert</span>
+            </div>
+
+            <nav class="cc-header-nav">
+                <button class="cc-nav-btn active" data-view="catalog" onclick="showView('catalog')">
+                    <span class="material-icons">store</span>
+                    <span>Catalogo</span>
                 </button>
-                <button class="btn btn-sm nav-btn" data-view="orders" onclick="showView('orders')">
-                    <span class="material-icons fs-6 align-text-bottom me-1">receipt_long</span>Meus Pedidos
+                <button class="cc-nav-btn" data-view="orders" onclick="showView('orders')">
+                    <span class="material-icons">receipt_long</span>
+                    <span>Meus Pedidos</span>
                 </button>
             </nav>
-            <div class="ms-auto d-flex align-items-center gap-2">
-                <span class="text-secondary small d-none d-md-inline" id="user-email-display"></span>
-                <button class="btn btn-outline-secondary btn-sm" onclick="logout()">
-                    <span class="material-icons fs-6 align-text-bottom me-1">logout</span>Sair
+
+            <div class="cc-header-user">
+                <span class="user-chip d-none d-md-flex">
+                    <span class="material-icons">person</span>
+                    <span id="user-email-display"></span>
+                </span>
+                <button class="cc-icon-btn" onclick="logout()" title="Sair da conta">
+                    <span class="material-icons">logout</span>
                 </button>
             </div>
         </header>
 
         <!-- SUB-VIEW: CATALOGO -->
-        <main id="view-catalog" class="p-3 p-md-4">
-            <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-                <h2 class="h5 mb-0">Catalogo de Cursos e Vouchers</h2>
+        <main id="view-catalog" class="cc-view">
+            <div class="view-hero">
+                <div>
+                    <h2 class="view-title">Catalogo</h2>
+                    <p class="view-subtitle">Cursos e vouchers para certificacoes em nuvem</p>
+                </div>
             </div>
 
-            <div class="d-flex flex-wrap gap-2 mb-3" id="filter-provider">
-                <span class="text-secondary small me-1 align-self-center">Provedor:</span>
-                <button class="btn btn-sm filter-pill active" data-filter="provider" data-value="all">Todos</button>
-                <button class="btn btn-sm filter-pill" data-filter="provider" data-value="AWS">AWS</button>
-                <button class="btn btn-sm filter-pill" data-filter="provider" data-value="Azure">Azure</button>
-                <button class="btn btn-sm filter-pill" data-filter="provider" data-value="GCP">GCP</button>
-            </div>
-            <div class="d-flex flex-wrap gap-2 mb-3" id="filter-tipo">
-                <span class="text-secondary small me-1 align-self-center">Tipo:</span>
-                <button class="btn btn-sm filter-pill active" data-filter="tipo" data-value="all">Todos</button>
-                <button class="btn btn-sm filter-pill" data-filter="tipo" data-value="curso">Curso</button>
-                <button class="btn btn-sm filter-pill" data-filter="tipo" data-value="voucher">Voucher</button>
+            <div class="filter-bar">
+                <div class="filter-group" id="filter-provider">
+                    <span class="filter-label">Provedor</span>
+                    <div class="filter-chips">
+                        <button class="filter-chip active" data-filter="provider" data-value="all">Todos</button>
+                        <button class="filter-chip chip-aws" data-filter="provider" data-value="AWS">AWS</button>
+                        <button class="filter-chip chip-azure" data-filter="provider" data-value="Azure">Azure</button>
+                        <button class="filter-chip chip-gcp" data-filter="provider" data-value="GCP">GCP</button>
+                    </div>
+                </div>
+                <div class="filter-group" id="filter-tipo">
+                    <span class="filter-label">Tipo</span>
+                    <div class="filter-chips">
+                        <button class="filter-chip active" data-filter="tipo" data-value="all">Todos</button>
+                        <button class="filter-chip" data-filter="tipo" data-value="curso">Curso</button>
+                        <button class="filter-chip" data-filter="tipo" data-value="voucher">Voucher</button>
+                    </div>
+                </div>
             </div>
 
-            <div id="catalog-loading" class="text-center py-5">
+            <div id="catalog-loading" class="cc-loading-state">
                 <div class="spinner-border text-primary" role="status"></div>
-                <p class="text-secondary small mt-2">Carregando catalogo...</p>
+                <p class="text-secondary small mt-3 mb-0">Carregando catalogo...</p>
             </div>
 
-            <div id="catalog-empty" class="text-center py-5 d-none">
-                <span class="material-icons fs-1 text-secondary">search_off</span>
-                <p class="text-secondary mt-2">Nenhum curso encontrado com esses filtros.</p>
+            <div id="catalog-empty" class="cc-empty-state d-none">
+                <span class="material-icons cc-empty-icon">search_off</span>
+                <p class="text-secondary mt-2 mb-0">Nenhum curso encontrado com esses filtros.</p>
             </div>
 
             <div class="row g-3" id="catalog-grid"></div>
         </main>
 
         <!-- SUB-VIEW: MEUS PEDIDOS -->
-        <main id="view-orders" class="p-3 p-md-4" style="display:none;">
-            <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-                <h2 class="h5 mb-0">Meus Pedidos</h2>
+        <main id="view-orders" class="cc-view" style="display:none;">
+            <div class="view-hero">
+                <div>
+                    <h2 class="view-title">Meus Pedidos</h2>
+                    <p class="view-subtitle">Historico e ciclo de vida dos seus pedidos</p>
+                </div>
                 <button class="btn btn-primary btn-sm" onclick="showView('catalog')">
-                    <span class="material-icons fs-6 align-text-bottom me-1">add</span>Novo Pedido
+                    <span class="material-icons fs-6 align-text-bottom me-1">add</span>
+                    Novo Pedido
                 </button>
             </div>
 
-            <div id="orders-loading" class="text-center py-5">
+            <div id="orders-loading" class="cc-loading-state">
                 <div class="spinner-border text-primary" role="status"></div>
-                <p class="text-secondary small mt-2">Carregando pedidos...</p>
+                <p class="text-secondary small mt-3 mb-0">Carregando pedidos...</p>
             </div>
 
-            <div id="orders-empty" class="text-center py-5 d-none">
-                <span class="material-icons fs-1 text-secondary">receipt_long</span>
-                <p class="text-secondary mt-2">Nenhum pedido encontrado.</p>
+            <div id="orders-empty" class="cc-empty-state d-none">
+                <span class="material-icons cc-empty-icon">receipt_long</span>
+                <p class="text-secondary mt-2">Voce ainda nao tem pedidos.</p>
                 <button class="btn btn-primary btn-sm" onclick="showView('catalog')">
-                    <span class="material-icons fs-6 align-text-bottom me-1">add</span>Fazer primeiro pedido
+                    <span class="material-icons fs-6 align-text-bottom me-1">store</span>
+                    Explorar Catalogo
                 </button>
             </div>
 
@@ -148,39 +197,44 @@
         </main>
 
         <!-- SUB-VIEW: DETALHE DO PEDIDO -->
-        <main id="view-order-detail" class="p-3 p-md-4" style="display:none;">
-            <button class="btn btn-sm btn-outline-secondary mb-3" onclick="showView('orders')">
-                <span class="material-icons fs-6 align-text-bottom me-1">arrow_back</span>Voltar para Meus Pedidos
+        <main id="view-order-detail" class="cc-view" style="display:none;">
+            <button class="cc-back-btn" onclick="showView('orders')">
+                <span class="material-icons">arrow_back</span>
+                Meus Pedidos
             </button>
 
-            <div id="detail-card"></div>
+            <div id="detail-card" class="mt-3"></div>
 
-            <div id="detail-actions" class="mt-3 d-flex gap-2">
+            <div id="detail-actions" class="detail-action-bar mt-3">
                 <button class="btn btn-outline-danger" onclick="cancelOrder()">
                     <span class="material-icons me-1 align-text-bottom">cancel</span>Cancelar Pedido
                 </button>
                 <button class="btn btn-outline-primary" onclick="showUpdateForm()">
-                    <span class="material-icons me-1 align-text-bottom">refresh</span>Atualizar Itens
+                    <span class="material-icons me-1 align-text-bottom">edit</span>Atualizar Itens
                 </button>
             </div>
 
-            <div id="update-form" class="card border-secondary mt-3 d-none">
-                <div class="card-body">
-                    <h6 class="card-title">Atualizar Itens</h6>
+            <div id="update-form" class="card cc-update-panel mt-3 d-none">
+                <div class="card-body p-4">
+                    <h6 class="fw-semibold mb-3">Substituir Itens do Pedido</h6>
                     <div class="mb-3">
-                        <label for="update-curso" class="form-label small">Curso</label>
-                        <select id="update-curso" class="form-select"></select>
+                        <label for="update-curso" class="form-label small fw-medium">Novo Curso</label>
+                        <select id="update-curso" class="form-select cc-input"></select>
                     </div>
-                    <div class="mb-3">
-                        <label for="update-qtd" class="form-label small">Quantidade</label>
-                        <input type="number" id="update-qtd" class="form-control" value="1" min="1" max="10">
+                    <div class="mb-4">
+                        <label for="update-qtd" class="form-label small fw-medium">Quantidade</label>
+                        <input type="number" id="update-qtd" class="form-control cc-input" value="1" min="1" max="10" style="max-width: 120px;">
                     </div>
-                    <button class="btn btn-primary" onclick="submitUpdate()">Confirmar</button>
-                    <button class="btn btn-outline-secondary ms-2" onclick="showUpdateForm()">Cancelar</button>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary" onclick="submitUpdate()">
+                            <span class="material-icons fs-6 align-text-bottom me-1">check</span>Confirmar
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="showUpdateForm()">Cancelar</button>
+                    </div>
                 </div>
             </div>
 
-            <div id="detail-feedback" class="mt-2"></div>
+            <div id="detail-feedback" class="mt-3"></div>
         </main>
 
     </div>
