@@ -381,6 +381,7 @@ function renderOrderDetail(order) {
     const actions = document.getElementById('detail-actions');
     const feedback = document.getElementById('detail-feedback');
     feedback.innerHTML = '';
+    document.getElementById('update-form').classList.add('d-none');
 
     const itemsHtml = (order.itens || []).map(item => `
         <tr>
