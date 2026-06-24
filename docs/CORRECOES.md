@@ -236,6 +236,49 @@ Este documento descreve cada problema identificado, a correção aplicada e a ju
 
 **Validacao:** Teste 12 em `validate-flow.sh` agora tambem valida `order-gateway`.
 
+### 16. [CORRECAO] `order.itens` -> `order.items` em `frontend/app.js`
+
+**Localizacao:** `frontend/app.js` (`renderOrders`, `renderOrderDetail`)
+
+**Problema:** O `order_processor` persiste o array de itens no DynamoDB com o campo `items` (ingles), mas o frontend consultava `order.itens` (portugues) em `renderOrders` e `renderOrderDetail`. Como o campo nao existia, todos os arrays de itens apareciam vazios, e os pedidos exibiam apenas ID e status.
+
+**Correcao:** Substituido `order.itens` por `order.items || order.itens || []` (fallback seguro) em ambas as funcoes.
+
+**Justificativa:** O fallback `items || itens` garante compatibilidade com dados existentes que porventura usem o nome em portugues, enquanto passa a usar o campo ingles que e o efetivamente persistido.
+
+**Validacao:** Apos a correcao, a listagem de pedidos exibe SKU, quantidade, preco por linha e total calculado.
+
+### 17. [CORRECAO] `item.cargaHoraria` -> `item.duracao` em `frontend/app.js`
+
+**Localizacao:** `frontend/app.js` (`renderCatalog`)
+
+**Problema:** O HTML do card de catalogo referenciava `item.cargaHoraria`, mas o script `seed-catalog.sh` persiste o campo `duracao` (ex: "40h"). O campo `cargaHoraria` nunca existiu nos dados, entao a duracao do curso nunca aparecia nos cards.
+
+**Correcao:** Substituido `item.cargaHoraria` por `item.duracao` na funcao `renderCatalog`.
+
+**Justificativa:** O campo real nos dados DynamoDB e `duracao`. O nome `cargaHoraria` era um erro de nomenclatura no frontend herdado de uma versao anterior do schema.
+
+**Validacao:** Cards do catalogo passam a exibir a duracao do curso ao lado do badge de nivel.
+
+### 18. [MELHORIA] Redesign do frontend CloudCert
+
+**Localizacao:** `frontend/index.html`, `frontend/style.css`, `frontend/app.js`
+
+**Problema:** Interface visual basica com Bootstrap puro, sem identidade de marca, sem diferenciacao visual entre provedores, sem exibicao de totais nos pedidos, sem animacoes ou micro-interacoes.
+
+**Correcao:** Substituicao completa do sistema de design:
+- Tipografia: Google Fonts (Inter) no lugar da padrao do sistema.
+- Tela de autenticacao com gradiente radial, card glassmorphism com backdrop-filter, glow sutil e gradiente no botao primario.
+- Cards de catalogo com hover lift, badges de provedor com cores das marcas reais (AWS laranja, Azure azul, GCP verde), badges de tipo (curso roxo, voucher verde), exibicao de duracao com icone de schedule, e botao "Comprar" com estilo de CTA.
+- Cards de pedido com borda esquerda colorida por status (PROCESSED indigo, UPDATED amber, CANCELLED grey), linhas de item com SKU/qtd/preco, e total calculado no rodape.
+- Tela de detalhe do pedido com layout de grid para itens, total destacado, e formulario de atualizacao com animacao slideDown.
+- Cabecalho sticky com glassmorphism, navegacao com chip ativo, e indicador de usuario logado.
+- Filtros de provedor com chips que ativam na cor da marca.
+- Responsividade para mobile: header compacto, filtros em coluna, tabelas simplificadas.
+- Variaveis CSS organizadas em design system com consistencia de radii, sombras e transicoes.
+
+**Validacao:** Inspecao visual em desktop e mobile, consistencia de cores e espacamento entre todas as telas.
+
 ---
 
 ## Rodada 9
