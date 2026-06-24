@@ -225,26 +225,9 @@ Edite `.env`: defina `DEPLOY_TARGET=aws`, preencha `AWS_REGION`, `RESOURCE_SUFFI
 
 **JWT implementado manualmente em stdlib Python sem dependencias externas.** A conta de laboratório não tem Cognito, Secrets Manager nem KMS CMK. O modulo `common/auth.py` implementa PBKDF2-SHA256 (200.000 iterações), HMAC-SHA256, e `compare_digest` contra timing attack. Sem `requirements.txt` ou camada Lambda. Detalhes em [ARCHITECTURE.md#4-seguranca-sem-waf-cognito-e-kms](ARCHITECTURE.md#4-seguranca-sem-waf-cognito-e-kms).
 
-**Resource Policy do API Gateway com padrão Allow geral + Deny condicional.** A implementação inicial usava Allow-only com `IpAddress`, que bloqueava endpoints públicos (`POST /orders`, `GET /orders`) quando a restrição de IP era ativada. A correção (Rodada 7) usou o padrão Allow geral para toda a API + Deny condicional restrito a `*/*/POST/test`, respeitando a precedência do Deny sobre Allow. Detalhes em [ARCHITECTURE.md#4-seguranca-sem-waf-cognito-e-kms](ARCHITECTURE.md#4-seguranca-sem-waf-cognito-e-kms).
+**Resource Policy do API Gateway com padrão Allow geral + Deny condicional.** A implementação inicial usava Allow-only com `IpAddress`, que bloqueava endpoints públicos (`POST /orders`, `GET /orders`) quando a restrição de IP era ativada. A correção usou o padrão Allow geral para toda a API + Deny condicional restrito a `*/*/POST/test`, respeitando a precedência do Deny sobre Allow. Detalhes em [ARCHITECTURE.md#4-seguranca-sem-waf-cognito-e-kms](ARCHITECTURE.md#4-seguranca-sem-waf-cognito-e-kms).
 
 **batchItemFailures em todas as Lambdas SQS para reprocessamento parcial de lote.** Sem essa configuração, uma falha em uma das 5 mensagens do lote derrubava o lote inteiro, reprocessando mensagens ja bem-sucedidas. Com `ReportBatchItemFailures`, apenas os `messageId` com erro retornam na resposta, e as mensagens bem-sucedidas são confirmadas. Detalhes em [ARCHITECTURE.md#2-resiliência-dlq-batchitemfailures-e-visibilitytimeout](ARCHITECTURE.md#2-resiliência-dlq-batchitemfailures-e-visibilitytimeout).
-
-## Historico de Evolução
-
-| Rodada | Foco | Principal entrega |
-|---|---|---|
-| 1 | API + Validação | API Gateway, pre_validator, order_validator, SQS FIFO, EventBridge |
-| 2 | S3 + Auditoria | batch_processor, S3 data lake, DynamoDB audit, SNS alerts |
-| 3 | Polimento | Restrição de permissões, mensagens malformadas com SNS, correções de logging |
-| 4 | Lifecycle | lifecycle_ops (cancelar/atualizar), estado terminal CANCELLED, dedup movida para DynamoDB |
-| 5 | Seguranca e custo | Usage Plan + API Key, Resource Policy, Request Validator, DLQ alarms, TTL audit, Reserved Concurrency |
-| 6 | Correções | Diagrama Mermaid corrigido, Resource Policy refinada, cleanup completo |
-| 7 | Resource Policy | Allow geral + Deny condicional, padrão parse_body centralizado |
-| 8 | Identidade | customer_auth (cadastro/login/JWT), common/auth.py, tabela customer-data |
-| 9 | Catalogo | catalog_reader (vitrine pública), tabela course-catalog, seed de 11 cursos |
-| 10 | Gateway | order_gateway (CRUD autenticado), GSI clientId-index, ownership validation |
-| 11 | Frontend | CloudCert (produto), QA Dashboard preservado, deploy com 6 arquivos |
-| 12 | Documentação | README orientado a portfolio, ARCHITECTURE.md, diagrama consolidado |
 
 ## Licenca e Contato
 

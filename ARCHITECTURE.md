@@ -358,9 +358,7 @@ flowchart LR
 | update-order-queue | Standard | Idem |
 | order-s3-batch-queue | Standard | Notificações S3 não garantem ordem, Standard e suficiente |
 
-### O bug de Rodada 4
-
-Inicialmente, as filas de processamento (persister, cancel, update) eram FIFO com `MessageGroupId` estático. Isso forcava processamento sequencial: mesmo que dois pedidos fossem independentes, um precisava terminar para o outro comecar. Como a idempotência ja era garantida pelo DynamoDB, não havia ganho de corretude com a ordenação estrita. A conversão para Standard restaurou o paralelismo sem perda de integridade.
+Inicialmente as filas de processamento (persister, cancel, update) eram FIFO com `MessageGroupId` estático, forcando processamento sequencial sem ganho de corretude. Como a idempotência ja era garantida pelo DynamoDB, a conversão para Standard restaurou o paralelismo sem perda de integridade.
 
 ---
 
