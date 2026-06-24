@@ -44,7 +44,7 @@ if ! aws dynamodb describe-table --table-name "$AUDIT_TABLE_NAME" --region "$AWS
     aws dynamodb wait table-exists --table-name "$AUDIT_TABLE_NAME" --region "$AWS_REGION"
 fi
 
-# === SNS Topic (shared — created in deploy-api-flow.sh if not exists) ===
+# === SNS Topic (shared - created in deploy-api-flow.sh if not exists) ===
 if ! aws sns get-topic-attributes --topic-arn "arn:aws:sns:$AWS_REGION:$ACCOUNT_ID:$SNS_TOPIC_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
     aws sns create-topic --name "$SNS_TOPIC_NAME" --region "$AWS_REGION"
 fi
