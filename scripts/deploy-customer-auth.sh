@@ -50,6 +50,7 @@ cd "$SCRIPT_DIR"
 rm -rf "$PKG_DIR"
 
 ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.lambda_handler" "lambda_deploy_customer_auth.zip" "$AWS_REGION" "$ACCOUNT_ID" "5" "DYNAMODB_TABLE=$TABLE_NAME,JWT_SECRET=$JWT_SECRET_VALUE"
+validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE" "JWT_SECRET"
 
 # === API Gateway Resources ===
 REST_API_ID=$(aws apigateway get-rest-apis --region "$AWS_REGION" \

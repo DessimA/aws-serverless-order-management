@@ -54,6 +54,7 @@ echo "All dependencies validated."
 # === GSI: clientId-index ===
 GSI_COUNT=$(aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$AWS_REGION" \
     --query "length(Table.GlobalSecondaryIndexes[?IndexName=='clientId-index'])" --output text 2>/dev/null || echo "0")
+if [ "$GSI_COUNT" = "None" ]; then GSI_COUNT="0"; fi
 
 if [ "$GSI_COUNT" = "0" ]; then
     echo "Creating GSI clientId-index on $TABLE_NAME..."
@@ -103,6 +104,7 @@ cd "$SCRIPT_DIR"
 rm -rf "$PKG_DIR"
 
 ensure_lambda_function "$LAMBDA_NAME" "$ROLE_NAME" "index.lambda_handler" "lambda_deploy_gateway.zip" "$AWS_REGION" "$ACCOUNT_ID" "10" "DYNAMODB_TABLE=$TABLE_NAME,JWT_SECRET=$JWT_SECRET_VALUE,EVENT_BUS_NAME=$EVENT_BUS_NAME"
+validate_lambda_config "$LAMBDA_NAME" "$AWS_REGION" "DYNAMODB_TABLE" "JWT_SECRET" "EVENT_BUS_NAME"
 
 # === API Gateway Resources ===
 ROOT_RESOURCE_ID=$(aws apigateway get-resources --rest-api-id "$REST_API_ID" --region "$AWS_REGION" \
