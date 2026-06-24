@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CloudCert - Cursos e Vouchers de Certificacao</title>
+    <title>CloudCert - Cursos e Vouchers de Certificação</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..700;1,14..32,300..700&display=swap" rel="stylesheet">
@@ -15,81 +15,166 @@
 
     <!-- VIEW AUTH -->
     <div id="view-auth">
-        <div class="auth-scene">
-            <div class="auth-glow"></div>
-            <div class="container auth-container">
-                <div class="text-center mb-5">
-                    <div class="brand-mark mb-3">
-                        <span class="material-icons">school</span>
-                    </div>
-                    <h1 class="brand-name">CloudCert</h1>
-                    <p class="text-secondary small">Prepare-se para certificacoes AWS, Azure e GCP</p>
-                </div>
+      <div class="auth-layout">
 
-                <div class="card auth-card">
-                    <div class="card-body p-4 p-md-5">
-                        <ul class="nav nav-tabs nav-justified mb-4" role="tablist">
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="login-tab" data-bs-toggle="tab" data-bs-target="#auth-login" type="button" role="tab">Entrar</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="register-tab" data-bs-toggle="tab" data-bs-target="#auth-register" type="button" role="tab">Criar Conta</button>
-                            </li>
-                        </ul>
+        <!-- COLUNA ESQUERDA: Apresentação (oculta em mobile) -->
+        <div class="auth-presentation">
+          <div class="auth-pres-inner">
 
-                        <div class="tab-content">
-                            <div class="tab-pane fade show active" id="auth-login" role="tabpanel">
-                                <form id="login-form" onsubmit="return false;">
-                                    <div class="mb-3">
-                                        <label for="login-email" class="form-label small fw-medium">Email</label>
-                                        <input type="email" class="form-control cc-input" id="login-email" placeholder="seu@email.com" required>
-                                    </div>
-                                    <div class="mb-4">
-                                        <label for="login-password" class="form-label small fw-medium">Senha</label>
-                                        <input type="password" class="form-control cc-input" id="login-password" placeholder="Sua senha" required>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary w-100 cc-btn-primary" onclick="handleLogin()">
-                                        <span class="material-icons fs-6 align-text-bottom me-1">login</span>
-                                        Entrar
-                                    </button>
-                                </form>
-                            </div>
-
-                            <div class="tab-pane fade" id="auth-register" role="tabpanel">
-                                <form id="register-form" onsubmit="return false;">
-                                    <div class="mb-3">
-                                        <label for="register-email" class="form-label small fw-medium">Email</label>
-                                        <input type="email" class="form-control cc-input" id="register-email" placeholder="seu@email.com" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label for="register-password" class="form-label small fw-medium">Senha</label>
-                                        <input type="password" class="form-control cc-input" id="register-password" placeholder="Minimo 8 caracteres" required minlength="8">
-                                    </div>
-                                    <div class="mb-4">
-                                        <label for="register-confirm" class="form-label small fw-medium">Confirmar Senha</label>
-                                        <input type="password" class="form-control cc-input" id="register-confirm" placeholder="Repita a senha" required minlength="8">
-                                    </div>
-                                    <button type="submit" class="btn btn-primary w-100 cc-btn-primary" onclick="handleRegister()">
-                                        <span class="material-icons fs-6 align-text-bottom me-1">person_add</span>
-                                        Criar Conta
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-
-                        <div id="auth-error" class="alert alert-danger small mt-4 py-2 mb-0 d-none" role="alert"></div>
-                    </div>
-                </div>
-
-                <div class="auth-providers mt-4">
-                    <span class="provider-dot aws">AWS</span>
-                    <span class="auth-divider"></span>
-                    <span class="provider-dot azure">Azure</span>
-                    <span class="auth-divider"></span>
-                    <span class="provider-dot gcp">GCP</span>
-                </div>
+            <div class="cc-logo mb-4">
+              <span class="cc-logo-text">CC</span>
             </div>
+
+            <div class="auth-pres-heading">
+              <h1 class="auth-pres-brand">CloudCert</h1>
+              <span class="auth-pres-tag">Portfolio Project</span>
+            </div>
+
+            <p class="auth-pres-tagline">
+              Plataforma serverless para cursos e vouchers
+              de certificação em nuvem.
+            </p>
+
+            <p class="auth-pres-desc">
+              Construído sobre a stack AWS com API Gateway, Lambda,
+              SQS, EventBridge e DynamoDB. Demonstra uma arquitetura
+              orientada a eventos de ponta a ponta com autenticação JWT
+              e ciclo de vida completo de pedidos.
+            </p>
+
+            <div class="auth-features">
+              <div class="auth-feature-item">
+                <div class="auth-feature-icon">
+                  <span class="material-icons">store</span>
+                </div>
+                <div>
+                  <p class="auth-feature-title">Catálogo de Produtos</p>
+                  <p class="auth-feature-desc">
+                    Cursos e vouchers AWS, Azure e GCP
+                  </p>
+                </div>
+              </div>
+              <div class="auth-feature-item">
+                <div class="auth-feature-icon">
+                  <span class="material-icons">receipt_long</span>
+                </div>
+                <div>
+                  <p class="auth-feature-title">Gestão de Pedidos</p>
+                  <p class="auth-feature-desc">
+                    Compra, atualização e cancelamento em tempo real
+                  </p>
+                </div>
+              </div>
+              <div class="auth-feature-item">
+                <div class="auth-feature-icon">
+                  <span class="material-icons">cloud_done</span>
+                </div>
+                <div>
+                  <p class="auth-feature-title">AWS Serverless</p>
+                  <p class="auth-feature-desc">
+                    Lambda, SQS, EventBridge, DynamoDB, S3
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="auth-stack">
+              <span class="stack-badge">Python 3.12</span>
+              <span class="stack-badge">AWS Lambda</span>
+              <span class="stack-badge">DynamoDB</span>
+              <span class="stack-badge">EventBridge</span>
+            </div>
+
+            <div class="auth-providers mt-4">
+              <span class="provider-dot aws">AWS</span>
+              <span class="auth-divider"></span>
+              <span class="provider-dot azure">Azure</span>
+              <span class="auth-divider"></span>
+              <span class="provider-dot gcp">GCP</span>
+            </div>
+
+          </div>
         </div>
+        <!-- FIM COLUNA ESQUERDA -->
+
+        <!-- COLUNA DIREITA: Formulário -->
+        <div class="auth-form-panel">
+          <div class="auth-glow"></div>
+
+          <div class="auth-mobile-brand d-lg-none">
+            <div class="cc-logo mx-auto mb-3">
+              <span class="cc-logo-text">CC</span>
+            </div>
+            <h1 class="brand-name text-center">CloudCert</h1>
+            <p class="text-secondary small text-center mb-4">Certificações em nuvem</p>
+          </div>
+
+          <div class="card auth-card">
+            <div class="card-body p-4 p-md-5">
+              <ul class="nav nav-tabs nav-justified mb-4" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="login-tab" data-bs-toggle="tab" data-bs-target="#auth-login" type="button" role="tab">Entrar</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="register-tab" data-bs-toggle="tab" data-bs-target="#auth-register" type="button" role="tab">Criar Conta</button>
+                </li>
+              </ul>
+
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="auth-login" role="tabpanel">
+                  <form id="login-form" onsubmit="return false;">
+                    <div class="mb-3">
+                      <label for="login-email" class="form-label small fw-medium">Email</label>
+                      <input type="email" class="form-control cc-input" id="login-email" placeholder="seu@email.com" required>
+                    </div>
+                    <div class="mb-4">
+                      <label for="login-password" class="form-label small fw-medium">Senha</label>
+                      <input type="password" class="form-control cc-input" id="login-password" placeholder="Sua senha" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 cc-btn-primary" onclick="handleLogin()">
+                      <span class="material-icons fs-6 align-text-bottom me-1">login</span>
+                      Entrar
+                    </button>
+                  </form>
+                </div>
+
+                <div class="tab-pane fade" id="auth-register" role="tabpanel">
+                  <form id="register-form" onsubmit="return false;">
+                    <div class="mb-3">
+                      <label for="register-email" class="form-label small fw-medium">Email</label>
+                      <input type="email" class="form-control cc-input" id="register-email" placeholder="seu@email.com" required>
+                    </div>
+                    <div class="mb-3">
+                      <label for="register-password" class="form-label small fw-medium">Senha</label>
+                      <input type="password" class="form-control cc-input" id="register-password" placeholder="Mínimo 8 caracteres" required minlength="8">
+                    </div>
+                    <div class="mb-4">
+                      <label for="register-confirm" class="form-label small fw-medium">Confirmar Senha</label>
+                      <input type="password" class="form-control cc-input" id="register-confirm" placeholder="Repita a senha" required minlength="8">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 cc-btn-primary" onclick="handleRegister()">
+                      <span class="material-icons fs-6 align-text-bottom me-1">person_add</span>
+                      Criar Conta
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              <div id="auth-error" class="alert alert-danger small mt-4 py-2 mb-0 d-none" role="alert"></div>
+            </div>
+          </div>
+
+          <div class="auth-providers mt-4">
+            <span class="provider-dot aws">AWS</span>
+            <span class="auth-divider"></span>
+            <span class="provider-dot azure">Azure</span>
+            <span class="auth-divider"></span>
+            <span class="provider-dot gcp">GCP</span>
+          </div>
+        </div>
+        <!-- FIM COLUNA DIREITA -->
+
+      </div>
     </div>
 
     <!-- VIEW APP -->
@@ -98,14 +183,16 @@
         <!-- HEADER -->
         <header class="cc-header">
             <div class="cc-header-brand">
-                <span class="material-icons text-primary">school</span>
+                <div class="cc-header-logo">
+                    <span class="cc-header-logo-text">CC</span>
+                </div>
                 <span class="brand-label">CloudCert</span>
             </div>
 
             <nav class="cc-header-nav">
                 <button class="cc-nav-btn active" data-view="catalog" onclick="showView('catalog')">
                     <span class="material-icons">store</span>
-                    <span>Catalogo</span>
+                    <span>Catálogo</span>
                 </button>
                 <button class="cc-nav-btn" data-view="orders" onclick="showView('orders')">
                     <span class="material-icons">receipt_long</span>
@@ -124,12 +211,12 @@
             </div>
         </header>
 
-        <!-- SUB-VIEW: CATALOGO -->
+        <!-- SUB-VIEW: CATÁLOGO -->
         <main id="view-catalog" class="cc-view">
             <div class="view-hero">
                 <div>
-                    <h2 class="view-title">Catalogo</h2>
-                    <p class="view-subtitle">Cursos e vouchers para certificacoes em nuvem</p>
+                    <h2 class="view-title">Catálogo</h2>
+                    <p class="view-subtitle">Cursos e vouchers para certificações em nuvem</p>
                 </div>
             </div>
 
@@ -155,7 +242,7 @@
 
             <div id="catalog-loading" class="cc-loading-state">
                 <div class="spinner-border text-primary" role="status"></div>
-                <p class="text-secondary small mt-3 mb-0">Carregando catalogo...</p>
+                <p class="text-secondary small mt-3 mb-0">Carregando catálogo...</p>
             </div>
 
             <div id="catalog-empty" class="cc-empty-state d-none">
@@ -171,7 +258,7 @@
             <div class="view-hero">
                 <div>
                     <h2 class="view-title">Meus Pedidos</h2>
-                    <p class="view-subtitle">Historico e ciclo de vida dos seus pedidos</p>
+                    <p class="view-subtitle">Histórico e ciclo de vida dos seus pedidos</p>
                 </div>
                 <button class="btn btn-primary btn-sm" onclick="showView('catalog')">
                     <span class="material-icons fs-6 align-text-bottom me-1">add</span>
@@ -186,10 +273,10 @@
 
             <div id="orders-empty" class="cc-empty-state d-none">
                 <span class="material-icons cc-empty-icon">receipt_long</span>
-                <p class="text-secondary mt-2">Voce ainda nao tem pedidos.</p>
+                <p class="text-secondary mt-2">Você ainda não tem pedidos.</p>
                 <button class="btn btn-primary btn-sm" onclick="showView('catalog')">
                     <span class="material-icons fs-6 align-text-bottom me-1">store</span>
-                    Explorar Catalogo
+                    Explorar Catálogo
                 </button>
             </div>
 
@@ -236,6 +323,137 @@
 
             <div id="detail-feedback" class="mt-3"></div>
         </main>
+
+        <!-- FOOTER -->
+        <footer class="cc-footer">
+          <div class="cc-footer-inner">
+            <div class="cc-footer-grid">
+
+              <div class="cc-footer-col cc-footer-brand-col">
+                <div class="cc-footer-logo-row">
+                  <div class="cc-header-logo">
+                    <span class="cc-header-logo-text">CC</span>
+                  </div>
+                  <span class="cc-footer-brand-name">CloudCert</span>
+                </div>
+                <p class="cc-footer-brand-desc">
+                  Plataforma serverless para cursos e vouchers de certificacao
+                  em nuvem. Projeto de portfólio demonstrando arquitetura AWS
+                  orientada a eventos.
+                </p>
+              </div>
+
+              <div class="cc-footer-col">
+                <h4 class="cc-footer-col-title">Plataforma</h4>
+                <ul class="cc-footer-links">
+                  <li>
+                    <a href="#" onclick="showView('catalog'); return false;">
+                      Catálogo
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#" onclick="showView('orders'); return false;">
+                      Meus Pedidos
+                    </a>
+                  </li>
+                </ul>
+              </div>
+
+              <div class="cc-footer-col">
+                <h4 class="cc-footer-col-title">Recursos</h4>
+                <ul class="cc-footer-links">
+                  <li>
+                    <a href="https://github.com/DessimA/cloudcert"
+                       target="_blank" rel="noopener noreferrer">
+                      Documentação
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#" onclick="openTermsModal(); return false;">
+                      Termos de Uso
+                    </a>
+                  </li>
+                </ul>
+              </div>
+
+              <div class="cc-footer-col">
+                <h4 class="cc-footer-col-title">Desenvolvedor</h4>
+                <ul class="cc-footer-links">
+                  <li>
+                    <a href="https://github.com/DessimA"
+                       target="_blank" rel="noopener noreferrer">
+                      <span class="material-icons" style="font-size:0.9rem;vertical-align:middle;margin-right:4px;">code</span>
+                      GitHub
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://www.linkedin.com/in/dessima/"
+                       target="_blank" rel="noopener noreferrer">
+                      <span class="material-icons" style="font-size:0.9rem;vertical-align:middle;margin-right:4px;">link</span>
+                      LinkedIn
+                    </a>
+                  </li>
+                </ul>
+              </div>
+
+            </div>
+
+            <div class="cc-footer-bottom">
+              <p>
+                &copy; 2026 CloudCert. José Anderson.
+                Distribuído sob licença MIT.
+              </p>
+              <p class="cc-footer-disclaimer">
+                Projeto de portfólio. Não realiza transações comerciais reais.
+                Dados de demonstração sujeitos a redefinição a qualquer momento.
+              </p>
+            </div>
+          </div>
+        </footer>
+
+        <!-- MODAL: Termos de Uso -->
+        <div class="modal fade" id="modal-terms" tabindex="-1"
+             aria-labelledby="modal-terms-label" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark border border-secondary">
+              <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="modal-terms-label">Termos de Uso</h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Fechar"></button>
+              </div>
+              <div class="modal-body small text-secondary">
+                <p><strong class="text-light">Projeto de Portfólio</strong></p>
+                <p>
+                  CloudCert é um projeto de demonstração de arquitetura AWS
+                  serverless. Não realiza transações comerciais reais. Nenhum
+                  dado de pagamento é coletado ou processado.
+                </p>
+                <p><strong class="text-light">Dados de Demonstração</strong></p>
+                <p>
+                  As contas de usuário, pedidos e dados de catálogo são dados
+                  de demonstração. As informações podem ser redefinidas a qualquer
+                  momento sem aviso prévio.
+                </p>
+                <p><strong class="text-light">Uso Permitido</strong></p>
+                <p>
+                  Este sistema pode ser usado para avaliação técnica e testes de
+                  funcionalidade. Não use dados pessoais reais ao criar contas.
+                </p>
+                <p><strong class="text-light">Código Aberto</strong></p>
+                <p>
+                  O código-fonte está disponível no GitHub sob licença MIT.
+                  Contribuições e sugestões são bem-vindas.
+                </p>
+              </div>
+              <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-primary"
+                        data-bs-dismiss="modal">
+                  Entendido
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
     </div>
 
