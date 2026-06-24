@@ -175,10 +175,6 @@ deploy_gateway_endpoint "$ORDERS_RESOURCE_ID" "GET" "apigateway-gw-list" "orders
 # GET /orders/{orderId} (replaces read_order)
 deploy_gateway_endpoint "$ORDER_ID_RESOURCE_ID" "GET" "apigateway-gw-get" "orders/{orderId}" "method.request.path.orderId=true"
 
-# Remove old read_order permission
-aws lambda remove-permission --function-name "order-reader-${RESOURCE_SUFFIX}" \
-    --statement-id apigateway-reader --region "$AWS_REGION" 2>/dev/null || true
-
 # PATCH /orders/{orderId}
 deploy_gateway_endpoint "$ORDER_ID_RESOURCE_ID" "PATCH" "apigateway-gw-patch" "orders/{orderId}" "method.request.path.orderId=true"
 

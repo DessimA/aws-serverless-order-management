@@ -314,9 +314,9 @@ done
 # === 12. Reserved Concurrency Verification ===
 echo ""
 echo "--- Test 12: Reserved Concurrency ---"
-for CHECK_LAMBDA in "order-persister-$RESOURCE_SUFFIX" "order-reader-$RESOURCE_SUFFIX" "order-gateway-$RESOURCE_SUFFIX"; do
+for CHECK_LAMBDA in "order-persister-$RESOURCE_SUFFIX" "order-gateway-$RESOURCE_SUFFIX"; do
     RC_VALUE=$(aws lambda get-function-concurrency --function-name "$CHECK_LAMBDA" --region "$AWS_REGION" --query "ReservedConcurrentExecutions" --output text 2>/dev/null || echo "NOT_FOUND")
-    if [ "$CHECK_LAMBDA" = "order-reader-$RESOURCE_SUFFIX" ] || [ "$CHECK_LAMBDA" = "order-gateway-$RESOURCE_SUFFIX" ]; then
+    if [ "$CHECK_LAMBDA" = "order-gateway-$RESOURCE_SUFFIX" ]; then
         EXPECTED_RC="10"
     else
         EXPECTED_RC="5"
