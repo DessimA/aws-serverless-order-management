@@ -39,10 +39,3 @@ flowchart TD
     I --> J["Retry via SQS"]
 ```
 
-## Mudancas recentes
-
-- Uso de `common.sns.publish_error()` em vez de try/except inline.
-- Retorno alterado de `{'statusCode': 200}` para `{"batchItemFailures": [...]}`.
-- `raise` substituído por `batch_item_failures.append(...)`.
-- Campo ausente agora dispara alerta SNS (antes: descarte silencioso).
-- Timestamp substituído por `common.utils.utcnow_iso()`.

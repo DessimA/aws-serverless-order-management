@@ -31,7 +31,7 @@ Retorna o timestamp epoch (segundos) para `days` dias no futuro. Usado para TTL 
 Função de logging estruturado que produz uma linha JSON com `stage`, `pedidoId`, `message` e `timestamp`. Substitui `print()` de payloads completos nas Lambdas. Permite correlacionar a jornada de um pedido atraves de múltiplas Lambdas via CloudWatch Logs Insights (ver `docs/observability.md`).
 
 ### Convenção de logging
-A partir da Rodada 5, nenhuma Lambda deve logar o payload completo do evento (`json.dumps(event)`) em mensagens de sucesso/info. Apenas campos relevantes são logados (quantidade de records, pedidoId). Logs de erro (blocos `except`) podem continuar detalhados por ocorrerem com baixa frequência.
+Nenhuma Lambda deve logar o payload completo do evento (`json.dumps(event)`) em mensagens de sucesso/info. Apenas campos relevantes são logados (quantidade de records, pedidoId). Logs de erro (blocos `except`) podem continuar detalhados por ocorrerem com baixa frequência.
 
 ## Motivação do padrão
 

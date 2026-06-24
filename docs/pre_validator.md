@@ -20,7 +20,3 @@ Ponto de entrada síncrono para pedidos via API Gateway. Valida campos obrigató
 |----------|-----------|
 | `SQS_QUEUE_URL` | URL da fila SQS FIFO de validação |
 
-## Mudancas recentes
-
-- `MessageDeduplicationId` alterado de `str(order_id)` para `str(uuid.uuid4())`.
-- Respostas HTTP agora usam `common.http` em vez de headers inline.

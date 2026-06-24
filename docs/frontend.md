@@ -6,7 +6,7 @@ Dois frontends servidos no mesmo bucket S3 Static Website:
 
 - **`index.html`** / **`app.js`**: Produto para usuário final (CloudCert). Vem com autenticação JWT, catálogo de cursos, meus pedidos, cancelamento e atualização.
 
-- **`qa.html`** / **`qa.js`**: Painel de QA interno, preservado das rodadas anteriores. Usado para validação manual e automatizada dos fluxos do pipeline de deploy.
+- **`qa.html`** / **`qa.js`**: Painel de QA interno. Usado para validação manual e automatizada dos fluxos do pipeline de deploy.
 
 ## Estrutura de arquivos
 
@@ -14,8 +14,8 @@ Dois frontends servidos no mesmo bucket S3 Static Website:
 |---------|-------|
 | `frontend/index.html` | Pagina principal do produto (CloudCert). Estrutura com view de auth e view do app. |
 | `frontend/app.js` | Lógica do produto: autenticação, catálogo, pedidos, ciclo de vida. |
-| `frontend/qa.html` | Painel de QA interno (copiado do index.html original da Rodada 10). |
-| `frontend/qa.js` | Lógica do painel de QA (copiado do app.js original da Rodada 10). |
+| `frontend/qa.html` | Painel de QA interno (copiado do index.html original). |
+| `frontend/qa.js` | Lógica do painel de QA (copiado do app.js original). |
 | `frontend/style.css` | Estilos compartilhados entre produto e QA. |
 | `frontend/config.template.js` | Template com placeholders processado pelo deploy. |
 

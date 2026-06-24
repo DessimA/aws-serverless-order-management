@@ -22,8 +22,3 @@ Persiste pedidos validados na tabela DynamoDB `order-production-data`. E acionad
 | `DYNAMODB_TABLE` | Nome da tabela de produção |
 | `SNS_TOPIC_ARN` | ARN do topico SNS para alertas de duplicidade |
 
-## Mudancas recentes
-
-- Substituido `json.loads()` manual por `parse_detail()` (corrige TypeError com detail como dict).
-- Adicionado `SNS_TOPIC_ARN` e `publish_error()` para alertas de duplicata.
-- Alterado retorno de `{'statusCode': 200}` para `{"batchItemFailures": [...]}`.
