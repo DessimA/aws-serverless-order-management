@@ -80,14 +80,18 @@ def cancel_handler(event, context):
     if item.get("status") == "CANCELLED":
         return error_response(409, "Order is already cancelled")
     detail = json.dumps({"pedidoId": order_id})
-    response = eventbridge.put_events(
-        Entries=[{
-            "Source": "app.orders.operations",
-            "DetailType": "OrderCancelled",
-            "Detail": detail,
-            "EventBusName": os.environ["EVENT_BUS_NAME"],
-        }]
-    )
+    try:
+        response = eventbridge.put_events(
+            Entries=[{
+                "Source": "app.orders.operations",
+                "DetailType": "OrderCancelled",
+                "Detail": detail,
+                "EventBusName": os.environ["EVENT_BUS_NAME"],
+            }]
+        )
+    except Exception as e:
+        print(f"EventBridge error on cancel: {str(e)}")
+        return error_response(500, "Failed to publish cancellation event")
     if response.get("FailedEntryCount", 0) > 0:
         print(f"Failed to publish cancellation event: {response}")
         return error_response(500, "Failed to publish cancellation event")
@@ -115,14 +119,18 @@ def update_handler(event, context):
     if not novos_itens or not isinstance(novos_itens, list) or len(novos_itens) == 0:
         return error_response(400, "novosItens is required and must be a non-empty array")
     detail = json.dumps({"pedidoId": order_id, "novosItens": novos_itens})
-    response = eventbridge.put_events(
-        Entries=[{
-            "Source": "app.orders.operations",
-            "DetailType": "OrderUpdated",
-            "Detail": detail,
-            "EventBusName": os.environ["EVENT_BUS_NAME"],
-        }]
-    )
+    try:
+        response = eventbridge.put_events(
+            Entries=[{
+                "Source": "app.orders.operations",
+                "DetailType": "OrderUpdated",
+                "Detail": detail,
+                "EventBusName": os.environ["EVENT_BUS_NAME"],
+            }]
+        )
+    except Exception as e:
+        print(f"EventBridge error on update: {str(e)}")
+        return error_response(500, "Failed to publish update event")
     if response.get("FailedEntryCount", 0) > 0:
         print(f"Failed to publish update event: {response}")
         return error_response(500, "Failed to publish update event")
