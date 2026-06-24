@@ -141,7 +141,7 @@ if [ -n "$USAGE_PLAN_ID" ] && [ "$USAGE_PLAN_ID" != "None" ]; then
 fi
 
 # === .api-key file ===
-rm -f "$SCRIPT_DIR/.api-key" 2>/dev/null || true
+rm -f "$SCRIPT_DIR/scripts/.api-key" 2>/dev/null || true
 echo ".api-key file removed."
 
 # === .jwt-secret file ===
