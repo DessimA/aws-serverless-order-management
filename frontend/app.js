@@ -75,10 +75,10 @@ async function handleRegister() {
     errorEl.classList.add('d-none');
 
     if (password.length < 8) {
-        return showAuthError('Senha deve ter no minimo 8 caracteres.');
+        return showAuthError('Senha deve ter no mínimo 8 caracteres.');
     }
     if (password !== confirm) {
-        return showAuthError('Senhas nao conferem.');
+        return showAuthError('Senhas não conferem.');
     }
 
     try {
@@ -93,13 +93,13 @@ async function handleRegister() {
             document.getElementById('login-tab').click();
             handleLogin();
         } else if (res.status === 409) {
-            showAuthError('Email ja cadastrado.');
+            showAuthError('Email já cadastrado.');
         } else {
             const data = await res.json().catch(() => ({}));
             showAuthError(data.error || 'Erro ao criar conta.');
         }
     } catch (e) {
-        showAuthError('Erro de conexao. Tente novamente.');
+        showAuthError('Erro de conexão. Tente novamente.');
     }
 }
 
@@ -125,12 +125,12 @@ async function handleLogin() {
             showView('catalog');
             loadCatalog();
         } else if (res.status === 401) {
-            showAuthError('Email ou senha invalidos.');
+            showAuthError('Email ou senha inválidos.');
         } else {
             showAuthError('Erro ao fazer login.');
         }
     } catch (e) {
-        showAuthError('Erro de conexao. Tente novamente.');
+        showAuthError('Erro de conexão. Tente novamente.');
     }
 }
 
@@ -207,14 +207,15 @@ function renderCatalog() {
 
     empty.classList.add('d-none');
 
-    grid.innerHTML = filtered.map(item => {
+    grid.innerHTML = filtered.map((item, index) => {
         const providerClass = (item.provider || '').toLowerCase();
         const tipoClass     = (item.tipo || '').toLowerCase();
         const duracao       = item.duracao ? `<span class="course-duration"><span class="material-icons">schedule</span>${escapeHtml(item.duracao)}</span>` : '';
 
         return `
-            <div class="col-12 col-sm-6 col-lg-4">
-                <div class="card course-card h-100">
+            <div class="col-12 col-sm-6 col-lg-4"
+                 style="animation-delay: ${index * 55}ms">
+                <div class="card course-card course-card-enter h-100">
                     <div class="card-body d-flex flex-column">
                         <div class="course-badges">
                             <span class="badge-provider ${providerClass}">${escapeHtml(item.provider)}</span>
@@ -280,7 +281,7 @@ async function buyCourse(cursoId, nome, preco) {
             alert(data.error || 'Erro ao realizar pedido.');
         }
     } catch (e) {
-        alert('Erro de conexao. Tente novamente.');
+        alert('Erro de conexão. Tente novamente.');
     }
 }
 
@@ -328,7 +329,7 @@ function renderOrders(orders) {
         return db.localeCompare(da);
     });
 
-    list.innerHTML = sorted.map(order => {
+    list.innerHTML = sorted.map((order, index) => {
         const items    = order.items || order.itens || [];
         const total    = calculateOrderTotal(items);
         const date     = formatDatetime(order.updatedAt || order.processedAt || order.eventTime);
@@ -352,7 +353,9 @@ function renderOrders(orders) {
         ` : '';
 
         return `
-            <div class="order-card status-${statusCl}" onclick="viewOrderDetail('${order.orderId}')">
+            <div class="order-card order-card-enter status-${statusCl}"
+                 style="animation-delay: ${index * 45}ms"
+                 onclick="viewOrderDetail('${order.orderId}')">
                 <div class="order-card-inner">
                     <div class="order-card-top">
                         <div class="order-id-row">
@@ -386,7 +389,7 @@ async function viewOrderDetail(orderId) {
             renderOrderDetail(order);
             showView('order-detail');
         } else {
-            alert('Pedido nao encontrado ou acesso negado.');
+            alert('Pedido não encontrado ou acesso negado.');
         }
     } catch (e) {
         alert('Erro ao carregar detalhe do pedido.');
@@ -455,19 +458,19 @@ async function cancelOrder() {
 
         if (res.status === 202) {
             document.getElementById('detail-feedback').innerHTML =
-                '<div class="alert alert-info small py-2">Cancelamento solicitado. O status sera atualizado em breve.</div>';
+                '<div class="alert alert-info small py-2">Cancelamento solicitado. O status será atualizado em breve.</div>';
             setTimeout(() => viewOrderDetail(currentOrderId), 3000);
         } else if (res.status === 409) {
             const data = await res.json().catch(() => ({}));
             document.getElementById('detail-feedback').innerHTML =
-                `<div class="alert alert-warning small py-2">${data.error || 'Pedido ja cancelado.'}</div>`;
+                `<div class="alert alert-warning small py-2">${data.error || 'Pedido já cancelado.'}</div>`;
         } else {
             document.getElementById('detail-feedback').innerHTML =
                 '<div class="alert alert-danger small py-2">Erro ao cancelar pedido.</div>';
         }
     } catch (e) {
         document.getElementById('detail-feedback').innerHTML =
-            '<div class="alert alert-danger small py-2">Erro de conexao.</div>';
+            '<div class="alert alert-danger small py-2">Erro de conexão.</div>';
     }
 }
 
@@ -494,19 +497,19 @@ async function submitUpdate() {
 
         if (res.status === 202) {
             document.getElementById('detail-feedback').innerHTML =
-                '<div class="alert alert-info small py-2">Atualizacao solicitada. O status sera atualizado em breve.</div>';
+                '<div class="alert alert-info small py-2">Atualização solicitada. O status será atualizado em breve.</div>';
             showUpdateForm();
         } else if (res.status === 409) {
             const data = await res.json().catch(() => ({}));
             document.getElementById('detail-feedback').innerHTML =
-                `<div class="alert alert-warning small py-2">${data.error || 'Nao e possivel atualizar um pedido cancelado.'}</div>`;
+                `<div class="alert alert-warning small py-2">${data.error || 'Não é possível atualizar um pedido cancelado.'}</div>`;
         } else {
             document.getElementById('detail-feedback').innerHTML =
                 '<div class="alert alert-danger small py-2">Erro ao atualizar pedido.</div>';
         }
     } catch (e) {
         document.getElementById('detail-feedback').innerHTML =
-            '<div class="alert alert-danger small py-2">Erro de conexao.</div>';
+            '<div class="alert alert-danger small py-2">Erro de conexão.</div>';
     }
 }
 
@@ -528,6 +531,13 @@ function escapeHtml(text) {
 function formatPrice(value) {
     if (value == null) return '';
     return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function openTermsModal() {
+    const modalEl = document.getElementById('modal-terms');
+    if (!modalEl) return;
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
 }
 
 function formatDatetime(isoString) {
