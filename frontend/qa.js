@@ -159,7 +159,7 @@ function logResponse(type, label, response) {
 function clearLog() {
     const container = document.getElementById('logContainer');
     if (container) {
-        container.innerHTML = '<p class="text-center text-secondary small py-4 mb-0 log-empty">Clique em qualquer acao para comecar.</p>';
+        container.innerHTML = '<p class="text-center text-secondary small py-4 mb-0 log-empty">Clique em qualquer ação para começar.</p>';
     }
     Object.entries(PLACEHOLDERS).forEach(([tab, text]) => resetInlineResult(tab, text));
 }
@@ -368,7 +368,7 @@ async function testS3(scenario) {
             body: JSON.stringify({ action: 'list_files' }),
         });
     } else if (scenario === 'valid') {
-        const clientes = ['Joao Silva', 'Maria Santos', 'Carlos Oliveira'];
+        const clientes = ['João Silva', 'Maria Santos', 'Carlos Oliveira'];
         const produtos = [
             { nome: 'Curso AWS Practitioner', qtd: 1, preco: 149.90 },
             { nome: 'Curso AWS Solutions Architect', qtd: 2, preco: 249.90 },
