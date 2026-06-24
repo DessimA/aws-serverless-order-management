@@ -302,18 +302,33 @@ async function loadOrders() {
             const data = await res.json();
             renderOrders(data.orders || []);
         } else {
-            renderOrders([]);
+            renderOrders([], true);
         }
     } catch (e) {
-        renderOrders([]);
+        renderOrders([], true);
     }
 
     document.getElementById('orders-loading').classList.add('d-none');
 }
 
-function renderOrders(orders) {
+function renderOrders(orders, hasError) {
     const list  = document.getElementById('orders-list');
     const empty = document.getElementById('orders-empty');
+
+    if (hasError) {
+        list.innerHTML = '';
+        empty.classList.add('d-none');
+        list.innerHTML = `
+            <div class="cc-empty-state">
+                <span class="material-icons cc-empty-icon">cloud_off</span>
+                <p class="text-secondary mt-2 mb-0">Não foi possível carregar os pedidos.</p>
+                <button class="btn btn-outline-primary btn-sm mt-3" onclick="loadOrders()">
+                    <span class="material-icons fs-6 align-text-bottom me-1">refresh</span>
+                    Tentar novamente
+                </button>
+            </div>`;
+        return;
+    }
 
     if (!orders || orders.length === 0) {
         list.innerHTML = '';
