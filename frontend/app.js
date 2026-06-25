@@ -4,6 +4,7 @@ let catalogCache = [];
 let currentOrderId = null;
 let activeProviderFilter = 'all';
 let activeTipoFilter     = 'all';
+let pendingOrderId = null;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -31,6 +32,16 @@ function init() {
     document.querySelectorAll('.filter-chip[data-filter="tipo"]').forEach(btn => {
         btn.addEventListener('click', () => setTipoFilter(btn.dataset.value));
     });
+
+    const ordersList = document.getElementById('orders-list');
+    if (ordersList) {
+        ordersList.addEventListener('click', function handleOrderClick(e) {
+            const card = e.target.closest('.order-card');
+            if (card && card.dataset.orderId) {
+                viewOrderDetail(card.dataset.orderId);
+            }
+        });
+    }
 }
 
 async function validateToken() {
@@ -71,6 +82,9 @@ async function handleRegister() {
     const password = document.getElementById('register-password').value;
     const confirm  = document.getElementById('register-confirm').value;
     const errorEl  = document.getElementById('auth-error');
+    const btn = document.querySelector('#register-form .cc-btn-primary');
+    if (!btn) return;
+    const originalHtml = btn.innerHTML;
 
     errorEl.classList.add('d-none');
 
@@ -81,6 +95,8 @@ async function handleRegister() {
         return showAuthError('Senhas não conferem.');
     }
 
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Criando...';
     try {
         const res = await fetch(`${CUSTOMERS_ENDPOINT}/register`, {
             method: 'POST',
@@ -100,15 +116,23 @@ async function handleRegister() {
         }
     } catch (e) {
         showAuthError('Erro de conexão. Tente novamente.');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
     }
 }
 
 async function handleLogin() {
     const email    = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
+    const btn = document.querySelector('#login-form .cc-btn-primary');
+    if (!btn) return;
+    const originalHtml = btn.innerHTML;
 
     document.getElementById('auth-error').classList.add('d-none');
 
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Entrando...';
     try {
         const res = await fetch(`${CUSTOMERS_ENDPOINT}/login`, {
             method: 'POST',
@@ -131,6 +155,9 @@ async function handleLogin() {
         }
     } catch (e) {
         showAuthError('Erro de conexão. Tente novamente.');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
     }
 }
 
@@ -230,7 +257,7 @@ function renderCatalog() {
                             </div>
                             <div class="course-footer">
                                 <span class="course-price">${formatPrice(item.preco)}</span>
-                                <button class="btn-comprar" onclick="buyCourse('${item.cursoId}','${escapeHtml(item.nome)}',${item.preco})">
+                                <button class="btn-comprar" onclick="buyCourse('${item.cursoId}','${escapeHtml(item.nome)}',${item.preco},this)">
                                     <span class="material-icons">shopping_cart</span>
                                     Comprar
                                 </button>
@@ -259,29 +286,36 @@ function setTipoFilter(value) {
     renderCatalog();
 }
 
-async function buyCourse(cursoId, nome, preco) {
+async function buyCourse(cursoId, nome, preco, btn) {
     const pedidoId = `ORD-${Date.now()}`;
     const payload  = {
         pedidoId,
         clienteId: currentUser.clienteId,
         itens: [{ sku: cursoId, qtd: 1, preco }]
     };
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
     try {
-        const res = await fetch(API_ENDPOINT, {
+        const res = await fetch(ORDERS_ENDPOINT, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
         if (res.ok) {
-            alert(`Pedido realizado com sucesso!\n${nome}`);
+            pendingOrderId = pedidoId;
+            showToast('Pedido realizado com sucesso!', 'success');
             showView('orders');
         } else {
             const data = await res.json().catch(() => ({}));
-            alert(data.error || 'Erro ao realizar pedido.');
+            showToast(data.error || 'Erro ao realizar pedido.', 'danger');
         }
     } catch (e) {
-        alert('Erro de conexão. Tente novamente.');
+        showToast('Erro de conexao. Tente novamente.', 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
     }
 }
 
@@ -321,13 +355,24 @@ function renderOrders(orders, hasError) {
         list.innerHTML = `
             <div class="cc-empty-state">
                 <span class="material-icons cc-empty-icon">cloud_off</span>
-                <p class="text-secondary mt-2 mb-0">Não foi possível carregar os pedidos.</p>
+                <p class="text-secondary mt-2 mb-0">Nao foi possivel carregar os pedidos.</p>
                 <button class="btn btn-outline-primary btn-sm mt-3" onclick="loadOrders()">
                     <span class="material-icons fs-6 align-text-bottom me-1">refresh</span>
                     Tentar novamente
                 </button>
             </div>`;
         return;
+    }
+
+    if (pendingOrderId) {
+        const banner = document.createElement('div');
+        banner.className = 'alert alert-info small py-2 mb-3';
+        banner.textContent = 'Seu pedido esta sendo processado e aparecera em breve na lista.';
+        list.prepend(banner);
+        setTimeout(() => {
+            pendingOrderId = null;
+            banner.remove();
+        }, 8000);
     }
 
     if (!orders || orders.length === 0) {
@@ -370,7 +415,7 @@ function renderOrders(orders, hasError) {
         return `
             <div class="order-card order-card-enter status-${statusCl}"
                  style="animation-delay: ${index * 45}ms"
-                 onclick="viewOrderDetail('${order.orderId}')">
+                 data-order-id="${escapeHtml(order.orderId)}">
                 <div class="order-card-inner">
                     <div class="order-card-top">
                         <div class="order-id-row">
@@ -404,10 +449,10 @@ async function viewOrderDetail(orderId) {
             renderOrderDetail(order);
             showView('order-detail');
         } else {
-            alert('Pedido não encontrado ou acesso negado.');
+            showToast('Pedido nao encontrado ou acesso negado.', 'danger');
         }
     } catch (e) {
-        alert('Erro ao carregar detalhe do pedido.');
+        showToast('Erro ao carregar detalhe do pedido.', 'danger');
     }
 }
 
@@ -540,7 +585,18 @@ function escapeHtml(text) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function showToast(message, type) {
+    const toast = document.getElementById('app-toast');
+    const inner = document.getElementById('app-toast-inner');
+    if (!toast || !inner) return;
+    inner.className = 'alert alert-' + type + ' mb-0 py-2 small text-center';
+    inner.textContent = message;
+    toast.classList.remove('d-none');
+    setTimeout(() => toast.classList.add('d-none'), 3500);
 }
 
 function formatPrice(value) {
