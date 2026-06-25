@@ -193,7 +193,6 @@ echo "API Gateway deployment updated."
 # BUILD AND UPLOAD FRONTEND
 # ================================================================
 
-API_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders")
 TEST_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/test")
 READ_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders/{orderId}")
 CATALOG_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/catalog")
@@ -211,7 +210,6 @@ cp "$SCRIPT_DIR/../frontend/config.template.js" "$BUILD_DIR/config.js"
 # Inject environment values
 API_KEY_VALUE=$(cat "$SCRIPT_DIR/.api-key" 2>/dev/null || echo "")
 
-sed -i "s|__API_ENDPOINT__|$API_ENDPOINT|g" "$BUILD_DIR/config.js"
 sed -i "s|__TEST_ENDPOINT__|$TEST_ENDPOINT|g" "$BUILD_DIR/config.js"
 sed -i "s|__READ_ENDPOINT__|$READ_ENDPOINT|g" "$BUILD_DIR/config.js"
 sed -i "s|__S3_BUCKET__|$S3_BUCKET|g" "$BUILD_DIR/config.js"
@@ -239,7 +237,6 @@ echo " FRONTEND DEPLOY COMPLETE"
 echo "============================================="
 echo "Frontend URL:  $FRONTEND_URL"
 echo "QA Dashboard:  ${FRONTEND_URL}/qa.html"
-echo "API Endpoint:  $API_ENDPOINT"
 echo "Test Endpoint: $TEST_ENDPOINT"
 echo "Read Endpoint: $READ_ENDPOINT"
 echo "Catalog Endpoint:  $CATALOG_ENDPOINT"

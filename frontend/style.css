@@ -1216,6 +1216,13 @@ body {
 
 .cc-qa-sidebar {
     background: rgba(0, 0, 0, 0.25);
+    max-height: calc(100vh - 62px);
+    width: 100%;
+    max-width: 380px;
+}
+
+#logContainer {
+    max-height: calc(100vh - 110px);
 }
 
 .cc-qa-card {
