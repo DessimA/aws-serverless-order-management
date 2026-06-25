@@ -28,6 +28,7 @@ def lambda_handler(event, context):
     batch_item_failures = []
 
     for record in event['Records']:
+        order_id = None
         try:
             envelope = parse_body(record)
             order_detail = parse_detail(record, envelope=envelope)

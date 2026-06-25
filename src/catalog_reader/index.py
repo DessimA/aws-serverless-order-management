@@ -1,4 +1,3 @@
-import json
 import os
 import boto3
 from botocore.exceptions import ClientError
@@ -19,14 +18,19 @@ def lambda_handler(event, context):
 
 def list_handler(event, context):
     try:
-        result = table.scan(
-            FilterExpression="disponivel = :v",
-            ExpressionAttributeValues={":v": True},
-        )
-        return api_response(200, {
-            "items": result.get("Items", []),
-            "count": len(result.get("Items", [])),
-        })
+        items = []
+        kwargs = {
+            "FilterExpression": "disponivel = :v",
+            "ExpressionAttributeValues": {":v": True},
+        }
+        while True:
+            result = table.scan(**kwargs)
+            items.extend(result.get("Items", []))
+            last_key = result.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            kwargs["ExclusiveStartKey"] = last_key
+        return api_response(200, {"items": items, "count": len(items)})
     except ClientError as e:
         print(f"DynamoDB ClientError scanning catalog: {e}")
         return error_response(500, "Internal server error")

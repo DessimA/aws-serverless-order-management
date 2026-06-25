@@ -41,11 +41,18 @@ def list_handler(event, context):
         return err
     client_id = payload["clienteId"]
     try:
-        result = table.query(
-            IndexName="clientId-index",
-            KeyConditionExpression=Key("clientId").eq(client_id),
-        )
-        items = result.get("Items", [])
+        items = []
+        kwargs = {
+            "IndexName": "clientId-index",
+            "KeyConditionExpression": Key("clientId").eq(client_id),
+        }
+        while True:
+            result = table.query(**kwargs)
+            items.extend(result.get("Items", []))
+            last_key = result.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            kwargs["ExclusiveStartKey"] = last_key
         return api_response(200, {"orders": items, "count": len(items)})
     except ClientError as e:
         print(f"DynamoDB ClientError querying orders: {e}")
