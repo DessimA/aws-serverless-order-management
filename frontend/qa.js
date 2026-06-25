@@ -63,7 +63,7 @@ function now() {
 
 function escapeHtml(text) {
     if (!text) return '';
-    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;');
 }
 
 function generateId(prefix) {
@@ -242,7 +242,7 @@ async function testAPI(scenario) {
     let res;
     if (scenario === 'invalid-json') {
         try {
-            const r = await fetch(API_ENDPOINT, {
+            const r = await fetch(ORDERS_ENDPOINT, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload,
             });
             const d = await r.json().catch(() => ({ raw: 'Could not parse response' }));
@@ -251,7 +251,7 @@ async function testAPI(scenario) {
             res = { status: 0, data: { error: err.message || 'Network error' } };
         }
     } else {
-        res = await apiFetch(API_ENDPOINT, {
+        res = await apiFetch(ORDERS_ENDPOINT, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
         });
     }
