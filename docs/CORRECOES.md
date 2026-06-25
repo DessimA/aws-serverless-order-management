@@ -2,7 +2,7 @@
 
 ## Visao Geral
 
-CloudCert e uma plataforma serverless de e-commerce para cursos e vouchers de certificacao em nuvem (AWS, Azure, GCP). O sistema implementa um pipeline de ingegestao de pedidos via API Gateway com Request Validator, bufferizacao em fila SQS FIFO, validacao e publicacao no EventBridge, que roteia eventos para filas SQS Standard de processamento. Cada Lambda de processamento persiste dados no DynamoDB com idempotencia via ConditionExpression.
+CloudCert e uma plataforma serverless de e-commerce para cursos e vouchers de certificacao em nuvem (AWS, Azure, GCP). O sistema implementa um pipeline de ingestao de pedidos via API Gateway com Request Validator, bufferizacao em fila SQS FIFO, validacao e publicacao no EventBridge, que roteia eventos para filas SQS Standard de processamento. Cada Lambda de processamento persiste dados no DynamoDB com idempotencia via ConditionExpression.
 
 O catalogo de produtos e publico e acessivel via endpoints GET. A autenticacao e feita por JWT HS256 implementado manualmente com stdlib Python (PBKDF2-SHA256, HMAC-SHA256), sem dependencias externas. O gateway de pedidos fornece endpoints autenticados para listagem, consulta com validacao de ownership, cancelamento e atualizacao. Processamento batch via S3 com notificacao direta para SQS e auditoria em tabela DynamoDB com TTL de 90 dias.
 
@@ -29,4 +29,25 @@ A arquitetura e orientada a eventos. Nenhuma chamada sincrona cruza fronteiras d
 - Log retention de 14 dias em todos os grupos de log CloudWatch
 - DLQ com `maxReceiveCount=3` e CloudWatch Alarm para cada fila
 - TTL de 90 dias na tabela de auditoria DynamoDB
+
+## Refinamentos e Correcoes
+
+1. `frontend/app.js`: XSS via onclick inline substituido por event delegation com data-order-id
+2. `frontend/app.js`, `frontend/qa.js`: escapeHtml agora escapa aspas simples (`&#39;`)
+3. `frontend/app.js`: botoes de login e registro desabilitados durante requisicao (double-submit)
+4. `scripts/validate-flow.sh`: Tests 23 e 24 corrigidos para usar arquivo temporario unico (uma chamada curl cada)
+5. `src/catalog_reader/index.py`: removido `import json` nao utilizado
+6. `src/order_processor/index.py`: `order_id` inicializado como `None` antes do bloco try
+7. `frontend/app.js`, `frontend/index.html`: `alert()` substituido por `showToast()` com notificacao temporaria
+8. `frontend/app.js`: botao "Comprar" exibe spinner e desabilita durante requisicao
+9. `frontend/app.js`: banner de processamento assincrono exibido apos compra em "Meus Pedidos"
+10. `src/order_gateway/index.py`: `list_handler` agora itera sobre paginas do DynamoDB (LastEvaluatedKey)
+11. `src/catalog_reader/index.py`: `list_handler` agora itera sobre paginas do scan DynamoDB
+12. `frontend/qa.html`, `frontend/style.css`: estilos inline migrados para CSS
+13. `frontend/config.template.js`, `scripts/deploy-frontend.sh`, `frontend/app.js`, `frontend/qa.js`: removida constante duplicada `API_ENDPOINT` em favor de `ORDERS_ENDPOINT`
+14. `README.md`: removido placeholder `$FRONTEND_URL` e referencia a "rodadas"
+15. `SECURITY.md`: descricao do frontend principal corrigida (portfolio product vs testing tool)
+16. `docs/deploy_scripts.md`: `deploy_gateway_endpoint` removido da tabela de lib.sh, documentado como funcao local de deploy-order-gateway.sh
+17. `docs/CORRECOES.md`: corrigido typo "ingegestao" para "ingestao"
+18. `scripts/validate-flow.sh`: comentario historico "gateway replaces read_order" substituido
 

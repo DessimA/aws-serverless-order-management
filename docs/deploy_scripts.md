@@ -25,8 +25,6 @@ Biblioteca compartilhada com funcoes utilitarias:
 | `poll_resource` | Polling generico com timeout |
 | `get_endpoint_url` | Monta URL de endpoint (API Gateway ou S3) |
 | `load_env` | Carrega variaveis do arquivo .env |
-| `deploy_gateway_endpoint` | Configura metodo/integracao/permissao no API Gateway |
-
 ## `deploy-api-flow.sh`
 
 Provisiona: EventBus, SNS Topic, filas FIFO (validation-buffer, validation-dlq), pre-validator Lambda, validator Lambda, API Gateway com recurso /orders, Request Validator com JSON Schema.
@@ -50,6 +48,8 @@ Provisiona: tabela DynamoDB customer-data, customer-auth Lambda, recursos /custo
 ## `deploy-order-gateway.sh`
 
 Provisiona: GSI clientId-index na tabela de producao, order-gateway Lambda, endpoints autenticados GET/PATCH /orders/{orderId}, POST /orders/{orderId}/cancel, GET /orders. Remove permissao antiga do order-reader (substituido).
+
+Define internamente a funcao local `deploy_gateway_endpoint` para configurar metodo, integracao, CORS e permissao Lambda em um unico bloco reutilizavel dentro do script.
 
 ## `deploy-catalog.sh`
 
