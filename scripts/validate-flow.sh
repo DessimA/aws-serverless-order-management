@@ -201,9 +201,9 @@ else
     echo "  DynamoDB result: $CANCEL_UPDATE_CHECK"
 fi
 
-# === 5. Read Order via API Gateway (gateway now replaces read_order) ===
+# === 5. Read Order via API Gateway requires auth ===
 echo ""
-echo "--- Test 5: GET /orders/{orderId} requires auth (gateway replaces read_order) ---"
+echo "--- Test 5: GET /orders/{orderId} requires auth (401 sem token) ---"
 READ_ORDER_ID="${UPDATE_ORDER_ID:-$ORDER_ID}"
 READ_ENDPOINT=$(get_endpoint_url "api" "$REST_API_ID" "/prod/orders/${READ_ORDER_ID}")
 READ_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$READ_ENDPOINT" 2>&1 || echo "CURL_FAILED")
@@ -583,14 +583,13 @@ echo "--- Test 23: POST /orders/{orderId}/cancel autenticado ---"
 if [ -z "${LOGIN_TOKEN:-}" ]; then
     echo "SKIP: LOGIN_TOKEN vazio"
 else
-    CANCEL_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$GW_ENDPOINT/$GW_ORDER_ID/cancel" \
+    TMPFILE=$(mktemp)
+    CANCEL_HTTP=$(curl -s -w "%{http_code}" -X POST "$GW_ENDPOINT/$GW_ORDER_ID/cancel" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $LOGIN_TOKEN" \
-      -d "{}" 2>&1 || echo "CURL_FAILED")
-    CANCEL_BODY=$(curl -s -X POST "$GW_ENDPOINT/$GW_ORDER_ID/cancel" \
-      -H "Content-Type: application/json" \
-      -H "Authorization: Bearer $LOGIN_TOKEN" \
-      -d "{}" 2>&1 || echo "CURL_FAILED")
+      -d "{}" -o "$TMPFILE" 2>&1 || echo "CURL_FAILED")
+    CANCEL_BODY=$(cat "$TMPFILE")
+    rm -f "$TMPFILE"
 
     if [ "$CANCEL_HTTP" = "202" ] && echo "$CANCEL_BODY" | grep -q "Cancellation requested"; then
         echo "PASS: Cancel returned 202 with status 'Cancellation requested'"
@@ -624,14 +623,13 @@ else
     poll_resource "order $GW_UPDATE_ORDER_ID with status PROCESSED" 12 10 \
         "aws dynamodb get-item --table-name \"$PRODUCTION_TABLE\" --key '{\"orderId\":{\"S\":\"$GW_UPDATE_ORDER_ID\"}}' --region \"$AWS_REGION\" 2>&1 | grep -q 'PROCESSED'" || true
 
-    UPDATE_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GW_ENDPOINT/$GW_UPDATE_ORDER_ID" \
+    TMPFILE=$(mktemp)
+    UPDATE_HTTP=$(curl -s -w "%{http_code}" -X PATCH "$GW_ENDPOINT/$GW_UPDATE_ORDER_ID" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $LOGIN_TOKEN" \
-      -d '{"novosItens":[{"sku":"AWS-SAA-001","qtd":1,"preco":249.90}]}' 2>&1 || echo "CURL_FAILED")
-    UPDATE_BODY=$(curl -s -X PATCH "$GW_ENDPOINT/$GW_UPDATE_ORDER_ID" \
-      -H "Content-Type: application/json" \
-      -H "Authorization: Bearer $LOGIN_TOKEN" \
-      -d '{"novosItens":[{"sku":"AWS-SAA-001","qtd":1,"preco":249.90}]}' 2>&1 || echo "CURL_FAILED")
+      -d '{"novosItens":[{"sku":"AWS-SAA-001","qtd":1,"preco":249.90}]}' -o "$TMPFILE" 2>&1 || echo "CURL_FAILED")
+    UPDATE_BODY=$(cat "$TMPFILE")
+    rm -f "$TMPFILE"
 
     if [ "$UPDATE_HTTP" = "202" ] && echo "$UPDATE_BODY" | grep -q "Update requested"; then
         echo "PASS: Update returned 202 with status 'Update requested'"
