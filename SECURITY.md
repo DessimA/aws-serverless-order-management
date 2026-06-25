@@ -16,7 +16,8 @@ This project is a learning/demonstration system. Security considerations:
 
 - The AWS infrastructure is provisioned with least-privilege IAM policies.
 - API Gateway endpoints default to `authorization-type: NONE` for testing purposes.
-- The frontend dashboard is a testing tool and should not be exposed to production traffic.
+- The main frontend (index.html) is a portfolio product intended for end-user access, demonstrating the full order lifecycle.
+- The QA Dashboard (qa.html) is an internal testing tool that requires an API Key (x-api-key header) for write operations. It should not be promoted to end users.
 - SNS email notifications are used for error alerts only.
 - No secrets or credentials are committed to the repository.
 

@@ -7,11 +7,9 @@
 
 ## Sobre o Projeto
 
-Um sistema serverless de gerenciamento de pedidos para cursos e vouchers de certificação em nuvem. Clientes se cadastram, navegam por um catálogo de cursos (AWS, Azure, GCP), compram com um clique e acompanham o ciclo de vida completo do pedido (processamento, atualização, cancelamento). O sistema foi construído em 11 rodadas iterativas, cada uma adicionando uma camada de complexidade, e documenta decisões de design conscientes em cada etapa.
+Um sistema serverless de gerenciamento de pedidos para cursos e vouchers de certificação em nuvem. Clientes se cadastram, navegam por um catálogo de cursos (AWS, Azure, GCP), compram com um clique e acompanham o ciclo de vida completo do pedido (processamento, atualização, cancelamento). A arquitetura e orientada a eventos: o barramento central EventBridge desacopla produtores de consumidores, filas SQS absorvem picos de carga e garantem resiliência a falhas temporárias, e o DynamoDB lida com idempotência via ConditionExpression. Nenhuma chamada síncrona cruza fronteiras de serviço. O projeto opera exclusivamente via AWS CLI e shell scripts, sem frameworks de Infrastructure as Code, expondo os parâmetros reais de cada serviço AWS.
 
-A arquitetura e orientada a eventos: o barramento central EventBridge desacopla produtores de consumidores, filas SQS absorvem picos de carga e garantem resiliência a falhas temporárias, e o DynamoDB lida com idempotência via ConditionExpression. Nenhuma chamada síncrona cruza fronteiras de serviço. O projeto opera exclusivamente via AWS CLI e shell scripts, sem frameworks de Infrastructure as Code, expondo os parâmetros reais de cada serviço AWS.
-
-Este projeto e material de portfolio. Cada decisão técnica foi tomada com consciência dos trade-offs, documentada em [ARCHITECTURE.md](ARCHITECTURE.md), e revisada ao longo das rodadas. O objetivo e demonstrar pensamento sistêmico sobre arquitetura serverless, não apenas a implementação funcional.
+Este projeto e material de portfolio. Cada decisão técnica foi tomada com consciência dos trade-offs, documentada em [ARCHITECTURE.md](ARCHITECTURE.md), O objetivo e demonstrar pensamento sistêmico sobre arquitetura serverless, não apenas a implementação funcional.
 
 ## Demo Rapida
 
@@ -24,9 +22,7 @@ Este projeto e material de portfolio. Cada decisão técnica foi tomada com cons
 5. Va para "Meus Pedidos" para ver o status.
 6. Clique em um pedido para detalhe: cancele ou atualize os itens.
 
-**Links apos deploy:**
-- [Frontend CloudCert]($FRONTEND_URL)
-- [QA Dashboard]($FRONTEND_URL/qa.html)
+**Links apos deploy:** Os endpoints sao exibidos no terminal ao final do deploy (./run.sh).
 
 ## Arquitetura
 
