@@ -14,4 +14,12 @@ cd "$SCRIPT_DIR"
 docker compose run --rm terraform init -upgrade
 docker compose run --rm terraform destroy -auto-approve
 
+echo "=== REMOVENDO VOLUME PERSISTENTE DO LOCALSTACK ==="
+LOCALSTACK_VOLUME=$(docker inspect localstack_students --format '{{range .Mounts}}{{if eq .Destination "/var/lib/localstack"}}{{.Name}}{{end}}{{end}}' 2>/dev/null || true)
+if [ -n "$LOCALSTACK_VOLUME" ]; then
+  docker compose down
+  docker volume rm "$LOCALSTACK_VOLUME"
+  docker compose up -d
+fi
+
 echo "=== LIMPEZA CONCLUIDA PARA SUFFIX: $RESOURCE_SUFFIX ==="
