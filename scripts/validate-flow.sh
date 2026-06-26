@@ -13,17 +13,15 @@ EVENT_BUS_NAME="orders-event-bus-${RESOURCE_SUFFIX}"
 PRODUCTION_TABLE="order-production-data-${RESOURCE_SUFFIX}"
 INGESTION_API_NAME="order-ingestion-api-${RESOURCE_SUFFIX}"
 
-# === Run deploy scripts ===
-echo "INFO: Running deploy scripts..."
-bash "$SCRIPT_DIR/deploy-api-flow.sh"
-bash "$SCRIPT_DIR/deploy-s3-flow.sh"
-bash "$SCRIPT_DIR/deploy-order-processor.sh"
-bash "$SCRIPT_DIR/deploy-lifecycle-ops.sh"
-bash "$SCRIPT_DIR/deploy-customer-auth.sh"
-bash "$SCRIPT_DIR/deploy-order-gateway.sh"
-bash "$SCRIPT_DIR/deploy-catalog.sh"
+# === Run deploy via Terraform ===
+echo "INFO: Provisionando infraestrutura com Terraform..."
+bash "$SCRIPT_DIR/generate-tfvars.sh"
+cd "$SCRIPT_DIR/.."
+docker compose run --rm terraform init -upgrade
+docker compose run --rm terraform apply -auto-approve
+cd "$SCRIPT_DIR"
+ensure_log_groups "$RESOURCE_SUFFIX"
 bash "$SCRIPT_DIR/seed-catalog.sh"
-bash "$SCRIPT_DIR/deploy-frontend.sh"
 
 echo ""
 echo "============================================="

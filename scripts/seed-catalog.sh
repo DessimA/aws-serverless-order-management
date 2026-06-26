@@ -15,7 +15,7 @@ echo " SEEDING CATALOG TABLE: $TABLE_NAME"
 echo "============================================="
 
 if ! aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
-    echo "ERRO: Table $TABLE_NAME does not exist. Run deploy-catalog.sh first."
+    echo "ERRO: Table $TABLE_NAME does not exist. Execute terraform apply primeiro."
     exit 1
 fi
 
