@@ -27,127 +27,74 @@ Este projeto e material de portfolio. Cada decisão técnica foi tomada com cons
 ## Arquitetura
 
 ```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 15, 'rankSpacing': 25, 'padding': 6}}}%%
-flowchart LR
-    Browser["Browser index.html"]:::s_cliente
-    QA["Browser qa.html"]:::s_qa
-    STATICSITE["S3 Static Website"]:::s_s3fe
-
-    subgraph APIGW["API Gateway (order-ingestion-api)"]
-        GW_POST["/orders POST"]
-        GW_GET["/orders GET"]
-        GW_GET_ID["/orders/{id} GET"]
-        GW_CANCEL["/orders/{id}/cancel POST"]
-        GW_PATCH["/orders/{id} PATCH"]
-        GW_CAT["/catalog GET"]
-        GW_CAT_ID["/catalog/{id} GET"]
-        GW_REG["/customers/register POST"]
-        GW_LOGIN["/customers/login POST"]
-        GW_ME["/customers/me GET"]
-        GW_TEST["/test POST (API Key)"]
+flowchart TB
+    subgraph CLIENT["Clientes"]
+        BROWSER["Browser (index.html)"]
+        QA["QA Dashboard (qa.html)"]
     end
 
-    subgraph LambdaIngestao["Lambdas de Ingestao"]
+    S3FE["S3 Static Website"]
+
+    API["API Gateway REST
+         11 endpoints"]
+
+    subgraph INGEST["Pipeline de Ingestao"]
         PRE["pre_validator"]
+        F["SQS validation-buffer (FIFO)"]
         VAL["order_validator"]
     end
 
-    subgraph LambdaProduto["Lambdas de Produto"]
+    subgraph DIRECT["Lambdas de Dominio"]
         GWL["order_gateway"]
-        CAT["catalog_reader"]
         AUTH["customer_auth"]
-        CTRL["test_controller"]
+        CAT["catalog_reader"]
+        TEST["test_controller"]
     end
 
-    subgraph LambdaProcessamento["Lambdas de Processamento"]
-        PROC["order_processor"]
-        CANCEL["lifecycle_ops (cancel)"]
-        UPDATE["lifecycle_ops (update)"]
-        BATCH["batch_processor"]
+    EB["EventBridge
+        orders-event-bus"]
+
+    subgraph PROC["Processamento Assincrono"]
+        SQ1["SQS persister"]
+        SQ2["SQS cancel"]
+        SQ3["SQS update"]
+        SQ4["SQS batch"]
+        L1["order_processor"]
+        L2["lifecycle_cancel"]
+        L3["lifecycle_update"]
+        L4["batch_processor"]
     end
 
-    subgraph SQS_Filas["Filas SQS"]
-        FIFO["order-validation-buffer (FIFO)"]
-        PERSQ["order-persister-queue (Standard)"]
-        CANCELQ["cancel-order-queue (Standard)"]
-        UPDATEQ["update-order-queue (Standard)"]
-        BATCHQUEUE["order-s3-batch-queue (Standard)"]
+    subgraph DATA["Armazenamento"]
+        DDB["DynamoDB
+             orders (GSI) / audit (TTL)
+             catalog / customers"]
+        S3["S3 order-files-bucket"]
     end
 
-    subgraph DynamoDB_Tables["DynamoDB"]
-        PROD["order-production-data + GSI clientId-index"]
-        AUDIT["order-batch-audit (TTL 90 dias)"]
-        CATALOG["course-catalog"]
-        CUSTOMERS["customer-data"]
+    subgraph MON["Observabilidade"]
+        CW["CloudWatch Logs (14d) + Alarmes"]
+        SNS["SNS order-notifications"]
     end
 
-    EB["orders-event-bus"]:::s_eb
+    BROWSER & QA --> S3FE --> API
+    API --> PRE & GWL & AUTH & CAT & TEST
+    PRE --> F --> VAL --> EB
+    GWL & TEST --> EB
+    TEST --> S3
+    GWL & AUTH & CAT --> DDB
+    EB --> SQ1 & SQ2 & SQ3
+    S3 --> SQ4
+    SQ1 --> L1
+    SQ2 --> L2
+    SQ3 --> L3
+    SQ4 --> L4
+    L1 & L2 & L3 & L4 --> DDB & CW & SNS
 
-    subgraph SNS_CW["SNS + CloudWatch"]
-        SNS["order-notifications (email)"]
-        CW["CloudWatch Alarms (5 DLQs)"]
-    end
-
-    DATABUCKET["order-files-bucket"]:::s_s3d
-
-    Browser --> STATICSITE
-    QA --> STATICSITE
-    Browser --> GW_POST & GW_GET & GW_GET_ID & GW_CANCEL & GW_PATCH & GW_CAT & GW_CAT_ID & GW_REG & GW_LOGIN & GW_ME
-    QA --> GW_TEST
-
-    GW_POST --> PRE --> FIFO --> VAL --> EB
-    GW_GET & GW_GET_ID & GW_CANCEL & GW_PATCH --> GWL
-    GW_CAT & GW_CAT_ID --> CAT
-    GW_REG & GW_LOGIN & GW_ME --> AUTH
-    GW_TEST --> CTRL
-
-    GWL --> PROD
-    GWL --> EB
-    CAT --> CATALOG
-    AUTH --> CUSTOMERS
-    CTRL --> EB & DATABUCKET
-
-    EB --> PERSQ --> PROC --> PROD
-    EB --> CANCELQ --> CANCEL --> PROD
-    EB --> UPDATEQ --> UPDATE --> PROD
-    DATABUCKET --> BATCHQUEUE --> BATCH --> AUDIT
-
-    subgraph Legend["Legenda"]
-        L1["Acesso do Cliente (HTTP)"]:::l_http
-        L2["Pipeline de Ingestao"]:::l_ing
-        L3["Roteamento para Lambdas de Dominio"]:::l_route
-        L4["Consultas e Persistencia em Dados"]:::l_data
-        L5["Processamento Orientado a Eventos"]:::l_event
-        L6["Processamento Batch S3"]:::l_batch
-    end
-
-    style APIGW fill:#3F51B5,color:#fff,stroke:#3949AB
-    style LambdaIngestao fill:#3949AB,color:#fff,stroke:#303F9F
-    style LambdaProduto fill:#303F9F,color:#fff,stroke:#283593
-    style LambdaProcessamento fill:#283593,color:#fff,stroke:#1A237E
-    style SQS_Filas fill:#00838F,color:#fff,stroke:#006064
-    style DynamoDB_Tables fill:#1A237E,color:#fff,stroke:#283593
-    style SNS_CW fill:#37474F,color:#fff,stroke:#455A64
-    style Legend fill:#F5F5F5,color:#333,stroke:#9E9E9E
-
-    classDef s_cliente fill:#7986CB,color:#fff,stroke:#5C6BC0
-    classDef s_qa fill:#9FA8DA,color:#fff,stroke:#7986CB
-    classDef s_s3fe fill:#5C6BC0,color:#fff,stroke:#3F51B5
-    classDef s_eb fill:#006064,color:#fff,stroke:#00838F
-    classDef s_s3d fill:#283593,color:#fff,stroke:#1A237E
-    classDef l_http fill:#5C6BC0,color:#fff,stroke:#5C6BC0
-    classDef l_ing fill:#3949AB,color:#fff,stroke:#3949AB
-    classDef l_route fill:#303F9F,color:#fff,stroke:#303F9F
-    classDef l_data fill:#1A237E,color:#fff,stroke:#1A237E
-    classDef l_event fill:#00838F,color:#fff,stroke:#00838F
-    classDef l_batch fill:#006064,color:#fff,stroke:#006064
-
-    linkStyle 0,1,2,3,4,5,6,7,8,9,10,11,12 stroke:#5C6BC0,stroke-width:2px
-    linkStyle 13,14,15,16 stroke:#3949AB,stroke-width:2px
-    linkStyle 17,18,19,20,21,22,23,24,25,26 stroke:#303F9F,stroke-width:2px
-    linkStyle 27,28,29,30,31,32 stroke:#1A237E,stroke-width:2px
-    linkStyle 33,34,35,36,37,38,39,40,41 stroke:#00838F,stroke-width:2px
-    linkStyle 42,43,44 stroke:#006064,stroke-width:2px
+    style S3FE fill:#5C6BC0,color:#fff
+    style API fill:#3F51B5,color:#fff
+    style EB fill:#006064,color:#fff
+    style S3 fill:#283593,color:#fff
 ```
 
 Para decisões detalhadas de design, veja [ARCHITECTURE.md](ARCHITECTURE.md).
