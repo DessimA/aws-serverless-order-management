@@ -303,7 +303,7 @@ terraform/
 ├── eventbridge_rules.tf  # 3 regras + targets SQS
 ├── api_gateway.tf        # REST API, CORS, deployment, usage plan
 ├── s3.tf                 # Buckets de dados e frontend
-├── secrets.tf            # JWT secret + API key (local)
+├── secrets.tf            # JWT secret (random_password)
 ├── frontend.tf           # Upload de assets do frontend
 └── modules/sqs_with_dlq/ # Modulo SQS + DLQ + alarme CloudWatch
 ```

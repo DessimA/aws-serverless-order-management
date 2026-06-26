@@ -20,7 +20,8 @@ cd "$SCRIPT_DIR/.."
 docker compose run --rm terraform init -upgrade
 docker compose run --rm terraform apply -auto-approve
 cd "$SCRIPT_DIR"
-chown "$(id -u):$(id -g)" "$SCRIPT_DIR/.jwt-secret" "$SCRIPT_DIR/.api-key" 2>/dev/null || true
+(umask 077 && docker compose run --rm terraform output -raw jwt_secret > "$SCRIPT_DIR/.jwt-secret")
+(umask 077 && docker compose run --rm terraform output -raw api_key_value > "$SCRIPT_DIR/.api-key")
 bash "$SCRIPT_DIR/seed-catalog.sh"
 
 echo ""

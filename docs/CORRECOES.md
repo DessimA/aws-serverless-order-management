@@ -47,7 +47,7 @@ A arquitetura e orientada a eventos. Nenhuma chamada sincrona cruza fronteiras d
 15. `SECURITY.md`: descricao do frontend principal corrigida (portfolio product vs testing tool)
 16. `docs/deploy.md`: documentacao de deploy baseada em Terraform
 17. `docs/CORRECOES.md`: corrigido typo "ingegestao" para "ingestao"
-18. `terraform/secrets.tf`: permissao de arquivo mantida como 0600 nos dois local_file; chown apos terraform apply para evitar Permission denied do container Docker
+18. `terraform/secrets.tf`: `local_file` substituido por `terraform output -raw` com `umask 077` para garantir 0600 sem Permission denied do container Docker
 19. `terraform/cloudwatch.tf`: adicionados 10 recursos aws_cloudwatch_log_group com retencao de 14 dias; ensure_log_groups removido de validate-flow.sh
 20. `terraform/api_gateway.tf`: adicionados aws_api_gateway_gateway_response para DEFAULT_4XX e DEFAULT_5XX com headers CORS; IDs incluidos nos triggers e depends_on do deployment
 21. `terraform/sqs.tf`: content_based_deduplication corrigido para false no modulo sqs_validation (inconsistencia com MessageDeduplicationId = uuid4() no pre_validator)

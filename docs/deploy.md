@@ -27,7 +27,7 @@ das variaveis do `.env`.
 | `api_gateway.tf` | REST API, 11 recursos, CORS, deployment, usage plan, api key |
 | `cloudwatch.tf` | 10 log groups CloudWatch das Lambdas, retencao de 14 dias |
 | `s3.tf` | Buckets de dados e frontend (static website) |
-| `secrets.tf` | JWT secret (random_password) + API key (arquivos locais) |
+| `secrets.tf` | JWT secret (random_password) |
 | `frontend.tf` | Upload de assets (index.html, qa.html, style.css, js, config.js) |
 
 ### Modulo sqs_with_dlq

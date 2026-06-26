@@ -9,7 +9,7 @@ codigo (IaC) para o CloudCert.
 
 ```
 terraform/
-  providers.tf          - Providers AWS, Random, Local, Archive
+  providers.tf          - Providers AWS, Random, Archive
   variables.tf          - Variaveis de entrada
   locals.tf             - Calculo de nomes de recursos
   outputs.tf            - Outputs (URLs, ARNs, chaves)
@@ -81,7 +81,7 @@ O `cleanup.sh` executa `generate-tfvars.sh` e `terraform destroy`.
 | `api_gateway.tf` | REST API, recursos, metodos, deployment, usage plan |
 | `cloudwatch.tf` | 10 log groups CloudWatch das Lambdas, retencao de 14 dias |
 | `s3.tf` | 2 buckets + notificacao + website |
-| `secrets.tf` | JWT secret, API key locais |
+| `secrets.tf` | JWT secret (random_password) |
 | `frontend.tf` | 6 objetos S3 do frontend |
 
 ## Modulo sqs_with_dlq
@@ -107,8 +107,8 @@ As credenciais sao herdadas do `~/.aws` montado no container Docker.
 ## Gerenciamento do JWT Secret
 
 O `random_password` gera 64 caracteres alfanumericos que persistem no state do
-Terraform. O secret e escrito em `scripts/.jwt-secret` para compatibilidade com
-os scripts de validacao. O mesmo mecanismo e usado para a API key.
+Terraform. Os scripts de validacao extraem o secret e a API key via
+`terraform output -raw` com `umask 077` para garantir permissao 0600.
 
 ## Geracao dos Zips Lambda
 
