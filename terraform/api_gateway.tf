@@ -762,6 +762,26 @@ resource "aws_lambda_permission" "test_post" {
   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/POST/test"
 }
 
+resource "aws_api_gateway_gateway_response" "cors_4xx" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  response_type = "DEFAULT_4XX"
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'*'"
+  }
+}
+
+resource "aws_api_gateway_gateway_response" "cors_5xx" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  response_type = "DEFAULT_5XX"
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'*'"
+  }
+}
+
 resource "aws_api_gateway_deployment" "prod" {
   rest_api_id = aws_api_gateway_rest_api.main.id
 
@@ -799,6 +819,8 @@ resource "aws_api_gateway_deployment" "prod" {
       aws_api_gateway_integration.login_post.id,
       aws_api_gateway_integration.me_get.id,
       aws_api_gateway_integration.test_post.id,
+      aws_api_gateway_gateway_response.cors_4xx.id,
+      aws_api_gateway_gateway_response.cors_5xx.id,
     ]))
   }
 
@@ -818,6 +840,8 @@ resource "aws_api_gateway_deployment" "prod" {
     aws_api_gateway_integration.login_post,
     aws_api_gateway_integration.me_get,
     aws_api_gateway_integration.test_post,
+    aws_api_gateway_gateway_response.cors_4xx,
+    aws_api_gateway_gateway_response.cors_5xx,
   ]
 }
 

@@ -20,7 +20,7 @@ cd "$SCRIPT_DIR/.."
 docker compose run --rm terraform init -upgrade
 docker compose run --rm terraform apply -auto-approve
 cd "$SCRIPT_DIR"
-ensure_log_groups "$RESOURCE_SUFFIX"
+chown "$(id -u):$(id -g)" "$SCRIPT_DIR/.jwt-secret" "$SCRIPT_DIR/.api-key" 2>/dev/null || true
 bash "$SCRIPT_DIR/seed-catalog.sh"
 
 echo ""
@@ -340,16 +340,14 @@ fi
 # === 14. Test Controller detailType Allowlist ===
 echo ""
 echo "--- Test 14: test_controller reject invalid detailType ---"
-CTRL_INVALID_DT_RESPONSE=$(curl -s -X POST "$TEST_ENDPOINT" \
+CTRL_INVALID_DT_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$TEST_ENDPOINT" \
   -H "Content-Type: application/json" \
   -H "x-api-key: $API_KEY_VALUE" \
-  -d "{\"action\":\"publish_event\",\"detailType\":\"OrderCreated\",\"detail\":{\"pedidoId\":\"CTRL-BAD-DT-$(date +%s)\"}}" 2>&1 || echo "CURL_FAILED:$?")
-CTRL_INVALID_DT_STATUS=$(echo "$CTRL_INVALID_DT_RESPONSE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('statusCode', 999))" 2>/dev/null || echo "PARSE_FAILED")
-if [ "$CTRL_INVALID_DT_STATUS" = "400" ]; then
-    echo "PASS: test_controller rejected invalid detailType with 400"
+  -d "{\"action\":\"publish_event\",\"detailType\":\"OrderCreated\",\"detail\":{\"pedidoId\":\"CTRL-BAD-DT-$(date +%s)\"}}" 2>&1 || echo "CURL_FAILED")
+if [ "$CTRL_INVALID_DT_HTTP" = "400" ]; then
+    echo "PASS: test_controller rejeitou detailType invalido com HTTP 400"
 else
-    echo "FAIL: test_controller returned statusCode=$CTRL_INVALID_DT_STATUS (expected 400)"
-    echo "  Response: $CTRL_INVALID_DT_RESPONSE"
+    echo "FAIL: test_controller retornou HTTP $CTRL_INVALID_DT_HTTP (esperado 400)"
 fi
 
 # === 15. Resource Policy Structural Validation ===

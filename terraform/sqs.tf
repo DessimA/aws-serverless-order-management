@@ -3,7 +3,7 @@ module "sqs_validation" {
   queue_name                  = local.validation_buffer_name
   dlq_name                    = local.validation_dlq_name
   is_fifo                     = true
-  content_based_deduplication = true
+  content_based_deduplication = false
   visibility_timeout          = 360
   sns_topic_arn               = aws_sns_topic.notifications.arn
   alarm_name                  = "dlq-alarm-validation-${var.resource_suffix}"

@@ -22,9 +22,10 @@ das variaveis do `.env`.
 | `dynamodb.tf` | 4 tabelas: production (com GSI), audit (com TTL), catalog, customer |
 | `iam.tf` | 10 roles IAM com politicas de menor privilegio |
 | `sqs.tf` | 5 filas SQS + 5 DLQs + policies (eventbridge e s3) |
-| `lambda_functions.tf` | 10 funcoes Lambda + log groups + event source mappings |
+| `lambda_functions.tf` | 10 funcoes Lambda + event source mappings |
 | `eventbridge_rules.tf` | 3 regras + targets SQS |
 | `api_gateway.tf` | REST API, 11 recursos, CORS, deployment, usage plan, api key |
+| `cloudwatch.tf` | 10 log groups CloudWatch das Lambdas, retencao de 14 dias |
 | `s3.tf` | Buckets de dados e frontend (static website) |
 | `secrets.tf` | JWT secret (random_password) + API key (arquivos locais) |
 | `frontend.tf` | Upload de assets (index.html, qa.html, style.css, js, config.js) |

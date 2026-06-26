@@ -66,25 +66,6 @@ get_endpoint_url() {
     fi
 }
 
-ensure_log_groups() {
-    local suffix="${1:?RESOURCE_SUFFIX required}"
-    for name in \
-        "order-pre-validator-${suffix}" \
-        "order-validator-${suffix}" \
-        "order-persister-${suffix}" \
-        "order-lifecycle-cancel-${suffix}" \
-        "order-lifecycle-update-${suffix}" \
-        "order-file-validator-${suffix}" \
-        "customer-auth-${suffix}" \
-        "order-gateway-${suffix}" \
-        "catalog-reader-${suffix}" \
-        "test-controller-${suffix}"
-    do
-        aws logs create-log-group --log-group-name "/aws/lambda/${name}" 2>/dev/null || true
-        aws logs put-retention-policy --log-group-name "/aws/lambda/${name}" --retention-in-days 14 2>/dev/null || true
-    done
-}
-
 poll_resource() {
     local description="$1"
     local max_attempts="$2"

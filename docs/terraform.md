@@ -19,11 +19,11 @@ terraform/
   dynamodb.tf           - Tabelas DynamoDB
   iam.tf                - Roles e policies para Lambdas
   sqs.tf                - Filas SQS + DLQs (via modulo)
-  lambda_functions.tf   - Funcoes Lambda + log groups + ESM
+  lambda_functions.tf   - Funcoes Lambda + ESMs
   eventbridge_rules.tf  - Regras EventBridge + targets
   api_gateway.tf        - API Gateway REST + recursos + metodos
   s3.tf                 - Buckets S3 (dados e frontend)
-  cloudwatch.tf         - (vazio: alarmes no modulo, logs nas Lambdas)
+  cloudwatch.tf         - 10 log groups CloudWatch das Lambdas, retencao de 14 dias
   secrets.tf            - JWT secret + API key locais
   frontend.tf           - Upload de assets do frontend
   modules/
@@ -76,9 +76,10 @@ O `cleanup.sh` executa `generate-tfvars.sh` e `terraform destroy`.
 | `dynamodb.tf` | 4 tabelas DynamoDB |
 | `iam.tf` | 10 roles + policies IAM |
 | `sqs.tf` | 5 filas + 5 DLQs + policies |
-| `lambda_functions.tf` | 10 Lambdas + log groups + ESMs |
+| `lambda_functions.tf` | 10 Lambdas + ESMs |
 | `eventbridge_rules.tf` | 3 regras + 3 targets SQS |
 | `api_gateway.tf` | REST API, recursos, metodos, deployment, usage plan |
+| `cloudwatch.tf` | 10 log groups CloudWatch das Lambdas, retencao de 14 dias |
 | `s3.tf` | 2 buckets + notificacao + website |
 | `secrets.tf` | JWT secret, API key locais |
 | `frontend.tf` | 6 objetos S3 do frontend |

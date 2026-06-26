@@ -3,7 +3,7 @@ resource "aws_lambda_function" "pre_validator" {
   role                           = aws_iam_role.pre_validator.arn
   runtime                        = "python3.12"
   handler                        = "index.lambda_handler"
-  timeout                        = 60
+  timeout                        = 15
   reserved_concurrent_executions = 5
   filename                       = data.archive_file.pre_validator.output_path
   source_code_hash               = data.archive_file.pre_validator.output_base64sha256
@@ -16,6 +16,7 @@ resource "aws_lambda_function" "pre_validator" {
 
   depends_on = [
     aws_iam_role_policy_attachment.pre_validator_basic,
+    aws_cloudwatch_log_group.pre_validator,
   ]
 }
 
@@ -24,7 +25,7 @@ resource "aws_lambda_function" "order_validator" {
   role                           = aws_iam_role.order_validator.arn
   runtime                        = "python3.12"
   handler                        = "index.lambda_handler"
-  timeout                        = 60
+  timeout                        = 30
   reserved_concurrent_executions = 5
   filename                       = data.archive_file.order_validator.output_path
   source_code_hash               = data.archive_file.order_validator.output_base64sha256
@@ -38,6 +39,7 @@ resource "aws_lambda_function" "order_validator" {
 
   depends_on = [
     aws_iam_role_policy_attachment.order_validator_basic,
+    aws_cloudwatch_log_group.order_validator,
   ]
 }
 
@@ -53,7 +55,7 @@ resource "aws_lambda_function" "order_processor" {
   role                           = aws_iam_role.order_processor.arn
   runtime                        = "python3.12"
   handler                        = "index.lambda_handler"
-  timeout                        = 60
+  timeout                        = 30
   reserved_concurrent_executions = 5
   filename                       = data.archive_file.order_processor.output_path
   source_code_hash               = data.archive_file.order_processor.output_base64sha256
@@ -67,6 +69,7 @@ resource "aws_lambda_function" "order_processor" {
 
   depends_on = [
     aws_iam_role_policy_attachment.order_processor_basic,
+    aws_cloudwatch_log_group.order_processor,
   ]
 }
 
@@ -82,7 +85,7 @@ resource "aws_lambda_function" "lifecycle_cancel" {
   role                           = aws_iam_role.lifecycle_cancel.arn
   runtime                        = "python3.12"
   handler                        = "index.cancel_handler"
-  timeout                        = 60
+  timeout                        = 30
   reserved_concurrent_executions = 5
   filename                       = data.archive_file.lifecycle_cancel.output_path
   source_code_hash               = data.archive_file.lifecycle_cancel.output_base64sha256
@@ -96,6 +99,7 @@ resource "aws_lambda_function" "lifecycle_cancel" {
 
   depends_on = [
     aws_iam_role_policy_attachment.lifecycle_cancel_basic,
+    aws_cloudwatch_log_group.lifecycle_cancel,
   ]
 }
 
@@ -111,7 +115,7 @@ resource "aws_lambda_function" "lifecycle_update" {
   role                           = aws_iam_role.lifecycle_update.arn
   runtime                        = "python3.12"
   handler                        = "index.update_handler"
-  timeout                        = 60
+  timeout                        = 30
   reserved_concurrent_executions = 5
   filename                       = data.archive_file.lifecycle_update.output_path
   source_code_hash               = data.archive_file.lifecycle_update.output_base64sha256
@@ -125,6 +129,7 @@ resource "aws_lambda_function" "lifecycle_update" {
 
   depends_on = [
     aws_iam_role_policy_attachment.lifecycle_update_basic,
+    aws_cloudwatch_log_group.lifecycle_update,
   ]
 }
 
@@ -154,6 +159,7 @@ resource "aws_lambda_function" "batch_processor" {
 
   depends_on = [
     aws_iam_role_policy_attachment.batch_processor_basic,
+    aws_cloudwatch_log_group.batch_processor,
   ]
 }
 
@@ -169,7 +175,7 @@ resource "aws_lambda_function" "customer_auth" {
   role                           = aws_iam_role.customer_auth.arn
   runtime                        = "python3.12"
   handler                        = "index.lambda_handler"
-  timeout                        = 60
+  timeout                        = 15
   reserved_concurrent_executions = 5
   filename                       = data.archive_file.customer_auth.output_path
   source_code_hash               = data.archive_file.customer_auth.output_base64sha256
@@ -183,6 +189,7 @@ resource "aws_lambda_function" "customer_auth" {
 
   depends_on = [
     aws_iam_role_policy_attachment.customer_auth_basic,
+    aws_cloudwatch_log_group.customer_auth,
   ]
 }
 
@@ -191,7 +198,7 @@ resource "aws_lambda_function" "order_gateway" {
   role                           = aws_iam_role.order_gateway.arn
   runtime                        = "python3.12"
   handler                        = "index.lambda_handler"
-  timeout                        = 60
+  timeout                        = 15
   reserved_concurrent_executions = 10
   filename                       = data.archive_file.order_gateway.output_path
   source_code_hash               = data.archive_file.order_gateway.output_base64sha256
@@ -206,6 +213,7 @@ resource "aws_lambda_function" "order_gateway" {
 
   depends_on = [
     aws_iam_role_policy_attachment.order_gateway_basic,
+    aws_cloudwatch_log_group.order_gateway,
   ]
 }
 
@@ -214,7 +222,7 @@ resource "aws_lambda_function" "catalog_reader" {
   role                           = aws_iam_role.catalog_reader.arn
   runtime                        = "python3.12"
   handler                        = "index.lambda_handler"
-  timeout                        = 60
+  timeout                        = 15
   reserved_concurrent_executions = 10
   filename                       = data.archive_file.catalog_reader.output_path
   source_code_hash               = data.archive_file.catalog_reader.output_base64sha256
@@ -227,6 +235,7 @@ resource "aws_lambda_function" "catalog_reader" {
 
   depends_on = [
     aws_iam_role_policy_attachment.catalog_reader_basic,
+    aws_cloudwatch_log_group.catalog_reader,
   ]
 }
 
@@ -235,7 +244,7 @@ resource "aws_lambda_function" "test_controller" {
   role                           = aws_iam_role.test_controller.arn
   runtime                        = "python3.12"
   handler                        = "index.lambda_handler"
-  timeout                        = 60
+  timeout                        = 30
   reserved_concurrent_executions = 5
   filename                       = data.archive_file.test_controller.output_path
   source_code_hash               = data.archive_file.test_controller.output_base64sha256
@@ -249,5 +258,6 @@ resource "aws_lambda_function" "test_controller" {
 
   depends_on = [
     aws_iam_role_policy_attachment.test_controller_basic,
+    aws_cloudwatch_log_group.test_controller,
   ]
 }
