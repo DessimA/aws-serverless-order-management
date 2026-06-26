@@ -13,3 +13,16 @@ services:
       - ENFORCE_IAM=1
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
+
+  terraform:
+    image: hashicorp/terraform:1.9
+    profiles:
+      - donotstart
+    network_mode: "host"
+    volumes:
+      - .:/workspace
+      - ~/.aws:/root/.aws:ro
+    working_dir: /workspace/terraform
+    environment:
+      - AWS_DEFAULT_REGION=${AWS_REGION}
+    entrypoint: ["terraform"]
