@@ -8,7 +8,7 @@
 4.  [Seguranca sem WAF, Cognito e KMS](#4-seguranca-sem-waf-cognito-e-kms)
 5.  [Observabilidade sem X-Ray](#5-observabilidade-sem-x-ray)
 6.  [Controle de custo em conta de laboratório](#6-controle-de-custo-em-conta-de-laboratório)
-7.  [IaC com shell scripts: escolha e limites](#7-iac-com-shell-scripts-escolha-e-limites)
+7.  [IaC com Terraform: escolha e limites](#7-iac-com-terraform-escolha-e-limites)
 8.  [FIFO vs Standard: quando usar cada um](#8-fifo-vs-standard-quando-usar-cada-um)
 9.  [Frontend: localStorage, JWT e operações assincronas](#9-frontend-localstorage-jwt-e-operações-assincronas)
 10. [O que seria diferente em produção real](#10-o-que-seria-diferente-em-produção-real)
@@ -284,33 +284,55 @@ O `reserved_concurrency` limita o numero maximo de execuções simultaneas de ca
 
 ---
 
-## 7. IaC com shell scripts: escolha e limites
+## 7. IaC com Terraform: escolha e limites
 
-### O que os scripts fazem
+### Migração de shell scripts para Terraform
 
-Cada script de deploy segue o padrão `ensure_*`: verifica se o recurso ja existe antes de criar (check-before-create). Exemplo de funções:
+A versão inicial do projeto usava 8 scripts shell com o padrão `ensure_*` (check-before-create via AWS CLI). A versão atual substitui todos os scripts de deploy por Terraform, mantendo identicos os nomes de recursos AWS, o codigo Lambda, o frontend e os testes E2E.
 
-| Função | Comportamento |
-|---|---|
-| `ensure_lambda_function` | `aws lambda get-function` -> se existe, `update-function-code`; se não, `create-function` |
-| `ensure_sqs_queue` | `aws sqs get-queue-url` -> cria com DLQ, VisibilityTimeout, URL/ARN |
-| `ensure_iam_lambda_role` | `aws iam get-role` -> cria com trust policy e inline permissions |
-| `poll_resource` | Polling genérico com timeout para aguardar recursos ficarem prontos |
+### Estrutura do Terraform
 
-### Comparação com Terraform
+```
+terraform/
+├── providers.tf          # Providers AWS, Random, Local, Archive
+├── variables.tf          # Variaveis de entrada (region, suffix, target)
+├── locals.tf             # Calculo de nomes de recursos
+├── outputs.tf            # URLs, ARNs, chaves
+├── data.tf               # Archive data sources (zips das Lambdas)
+├── sns.tf, eventbus.tf   # SNS Topic + EventBridge Event Bus
+├── dynamodb.tf           # 4 tabelas (pay-per-request, GSI, TTL)
+├── iam.tf                # 10 roles com politicas de menor privilegio
+├── sqs.tf                # 5 filas + DLQs (modulo reutilizavel)
+├── lambda_functions.tf   # 10 Lambdas + log groups + ESMs
+├── eventbridge_rules.tf  # 3 regras + targets SQS
+├── api_gateway.tf        # REST API, CORS, deployment, usage plan
+├── s3.tf                 # Buckets de dados e frontend
+├── secrets.tf            # JWT secret + API key (local)
+├── frontend.tf           # Upload de assets do frontend
+└── modules/sqs_with_dlq/ # Modulo SQS + DLQ + alarme CloudWatch
+```
 
-| Aspecto | Shell + AWS CLI | Terraform |
+### Por que Terraform?
+
+| Aspecto | Shell + AWS CLI (anterior) | Terraform (atual) |
 |---|---|---|
 | Preview de mudancas | Nenhum (sem plan) | `terraform plan` |
 | Grafo de dependencias | Manual (ordem dos scripts) | Automático |
 | State management | Nenhum (idempotência via check) | `terraform.tfstate` |
-| Portabilidade multi-cloud | Nenhuma | Alta (providers) |
-| Curva de aprendizado | Baixa (AWS CLI direto) | Media |
-| Exposição ao serviço AWS | Alta (cada parâmetro explicito) | Baixa (abstraida pelo provider) |
+| Reprovisionamento completo | `cleanup.sh` manual | `terraform destroy` + `apply` |
+| Modularidade | Funções em `lib.sh` | Modulos HCL reutilizaveis |
+| Suporte LocalStack | Variavel `AWS_ENDPOINT_URL` | Bloco `endpoints` dinamico |
 
-### Por que shell scripts?
+### O que permaneceu em shell script
 
-A escolha foi intencional para fins educacionais. Cada script expoe os parâmetros reais da API AWS. Por exemplo, ao configurar um target EventBridge para SQS FIFO, o script passa explicitamente `SqsParameters={"MessageGroupId":"..."}`, `ContentBasedDeduplication`, e a Resource-Based Policy da fila. Em um projeto de produção com equipe, Terraform ou CDK seriam preferidos pelo plan preview e state management.
+Alguns scripts shell foram mantidos por nao se tratar de provisionamento de infraestrutura:
+
+- **`scripts/lib.sh`** - Utilitarios compartilhados (validacao, polling, construcao de URLs)
+- **`scripts/validate-flow.sh`** - Gate de aceitacao E2E com 25 testes (agora orquestra Terraform + seed-catalog)
+- **`scripts/seed-catalog.sh`** - Populacao inicial do catalogo DynamoDB (dados, nao infra)
+- **`scripts/generate-tfvars.sh`** - Gera `terraform.tfvars` a partir do `.env`
+- **`cleanup.sh`** - Invoca `terraform destroy` com o tfvars gerado
+- **`run.sh`** - Entry point que executa `validate-flow.sh`
 
 ---
 
@@ -420,7 +442,7 @@ O campo `clienteId` no JWT (payload do token) corresponde ao campo `clientId` no
 | Autorização de endpoints | Validação JWT inline em cada Lambda | Lambda Authorizer ou Cognito Authorizer centralizado | Simplicidade em sistema pequeno |
 | Restrição de rede | API Gateway Resource Policy + Usage Plan | WAF com IP Set e Rate Rule | Conta de laboratório sem WAF |
 | Rastreamento distribuído | `log_event()` com JSON estruturado | AWS X-Ray com sampling ativo | Conta de laboratório sem X-Ray |
-| IaC | Shell scripts com `ensure_*` idempotente | Terraform ou CDK com plan preview | Escopo educacional (expor APIs AWS reais) |
+| IaC | Terraform (HCL) | CDK ou SAM com testes unitarios | Compatibilidade com LocalStack + AWS real |
 | CDN e HTTPS | S3 Static Website direto | CloudFront com OAI para HTTPS e cache de borda | Simplicidade; LocalStack não suporta CloudFront |
 | Seguranca de rede | Lambdas em VPC default | VPC com endpoints privados e NAT Gateway | Custo e complexidade desnecessários para laboratório |
 | Pagamento real | Sem integração de pagamento | Stripe, PagSeguro ou Gateway de pagamento como etapa entre PROCESSED | Escopo do projeto e gerenciamento de pedidos |

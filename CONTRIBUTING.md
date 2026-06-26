@@ -18,7 +18,8 @@ Thanks for your interest in contributing to this project.
 ## Project Structure
 
 ```
-├── scripts/        # IaC via AWS CLI shell scripts (deploy, cleanup, validate)
+├── scripts/        # Orchestration, validation, and utility scripts
+├── terraform/      # IaC: Terraform configuration (providers, resources, modules)
 ├── src/            # Lambda functions (Python 3.12, one directory per function)
 ├── frontend/       # S3 static website dashboard (HTML, CSS, JS)
 ├── samples/        # Example payload files
@@ -30,8 +31,7 @@ Thanks for your interest in contributing to this project.
 ### Shell Scripts
 - Use `set -euo pipefail` at the top.
 - Source `lib.sh` for shared helpers.
-- Every resource must be idempotent (check existence before creating).
-- Validate every resource after creation (use functions from `lib.sh`).
+- Keep scripts focused on orchestration and validation. Infrastructure provisioning is done via Terraform.
 
 ### Python
 - Python 3.12 + boto3.

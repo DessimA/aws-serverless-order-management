@@ -6,7 +6,7 @@ CloudCert e uma plataforma serverless de e-commerce para cursos e vouchers de ce
 
 O catalogo de produtos e publico e acessivel via endpoints GET. A autenticacao e feita por JWT HS256 implementado manualmente com stdlib Python (PBKDF2-SHA256, HMAC-SHA256), sem dependencias externas. O gateway de pedidos fornece endpoints autenticados para listagem, consulta com validacao de ownership, cancelamento e atualizacao. Processamento batch via S3 com notificacao direta para SQS e auditoria em tabela DynamoDB com TTL de 90 dias.
 
-A arquitetura e orientada a eventos. Nenhuma chamada sincrona cruza fronteiras de servico. O barramento central EventBridge desacopla produtores de consumidores. Filas SQS com DLQ absorvem picos de carga e garantem resiliencia a falhas temporarias. O projeto opera exclusivamente via AWS CLI e shell scripts, sem frameworks de Infrastructure as Code.
+A arquitetura e orientada a eventos. Nenhuma chamada sincrona cruza fronteiras de servico. O barramento central EventBridge desacopla produtores de consumidores. Filas SQS com DLQ absorvem picos de carga e garantem resiliencia a falhas temporarias. O provisionamento da infraestrutura e feito com Terraform, e os scripts shell orquestram o ciclo de deploy e validacao.
 
 ## Convencoes de Codigo
 
@@ -19,15 +19,13 @@ A arquitetura e orientada a eventos. Nenhuma chamada sincrona cruza fronteiras d
 
 ## Padroes de Infraestrutura
 
+- Infraestrutura como codigo com Terraform (HCL), nomes de recursos via `locals.tf`
 - `set -euo pipefail` em todos os scripts shell
-- Padrao check-before-create (idempotencia): verificar existencia antes de criar recurso
 - `VisibilityTimeout=360s` (6x o timeout de Lambda de 60s)
 - `ReportBatchItemFailures` em todos os event source mappings SQS
-- `validate_lambda_config` apos cada `ensure_lambda_function`
-- `lambda add-permission` com `source-arn` especifico por metodo/recurso
 - Reserved Concurrency: 5 para Lambdas de processamento, 10 para gateway e catalogo
 - Log retention de 14 dias em todos os grupos de log CloudWatch
-- DLQ com `maxReceiveCount=3` e CloudWatch Alarm para cada fila
+- DLQ com `maxReceiveCount=3` e CloudWatch Alarm para cada fila (via modulo sqs_with_dlq)
 - TTL de 90 dias na tabela de auditoria DynamoDB
 
 ## Refinamentos e Correcoes
@@ -44,10 +42,10 @@ A arquitetura e orientada a eventos. Nenhuma chamada sincrona cruza fronteiras d
 10. `src/order_gateway/index.py`: `list_handler` agora itera sobre paginas do DynamoDB (LastEvaluatedKey)
 11. `src/catalog_reader/index.py`: `list_handler` agora itera sobre paginas do scan DynamoDB
 12. `frontend/qa.html`, `frontend/style.css`: estilos inline migrados para CSS
-13. `frontend/config.template.js`, `scripts/deploy-frontend.sh`, `frontend/app.js`, `frontend/qa.js`: removida constante duplicada `API_ENDPOINT` em favor de `ORDERS_ENDPOINT`
+13. `frontend/app.js`, `frontend/qa.js`: removida constante duplicada `API_ENDPOINT` em favor de `ORDERS_ENDPOINT`; config.js removido do repositorio e gerado pelo Terraform via `locals.tf` config_js_content
 14. `README.md`: removido placeholder `$FRONTEND_URL` e referencia a "rodadas"
 15. `SECURITY.md`: descricao do frontend principal corrigida (portfolio product vs testing tool)
-16. `docs/deploy_scripts.md`: `deploy_gateway_endpoint` removido da tabela de lib.sh, documentado como funcao local de deploy-order-gateway.sh
+16. Deploy scripts substituidos por Terraform: `deploy-api-flow.sh`, `deploy-order-processor.sh`, `deploy-lifecycle-ops.sh`, `deploy-s3-flow.sh`, `deploy-customer-auth.sh`, `deploy-order-gateway.sh`, `deploy-catalog.sh`, `deploy-frontend.sh` removidos; `docs/deploy_scripts.md` reescrito e renomeado para `docs/deploy.md`
 17. `docs/CORRECOES.md`: corrigido typo "ingegestao" para "ingestao"
-18. `scripts/validate-flow.sh`: comentario historico "gateway replaces read_order" substituido
+18. `scripts/validate-flow.sh`: bloco de deploy substituido por Terraform init + apply
 

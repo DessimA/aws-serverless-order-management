@@ -7,7 +7,7 @@
 
 ## Sobre o Projeto
 
-Um sistema serverless de gerenciamento de pedidos para cursos e vouchers de certificação em nuvem. Clientes se cadastram, navegam por um catálogo de cursos (AWS, Azure, GCP), compram com um clique e acompanham o ciclo de vida completo do pedido (processamento, atualização, cancelamento). A arquitetura e orientada a eventos: o barramento central EventBridge desacopla produtores de consumidores, filas SQS absorvem picos de carga e garantem resiliência a falhas temporárias, e o DynamoDB lida com idempotência via ConditionExpression. Nenhuma chamada síncrona cruza fronteiras de serviço. O projeto opera exclusivamente via AWS CLI e shell scripts, sem frameworks de Infrastructure as Code, expondo os parâmetros reais de cada serviço AWS.
+Um sistema serverless de gerenciamento de pedidos para cursos e vouchers de certificação em nuvem. Clientes se cadastram, navegam por um catálogo de cursos (AWS, Azure, GCP), compram com um clique e acompanham o ciclo de vida completo do pedido (processamento, atualização, cancelamento). A arquitetura e orientada a eventos: o barramento central EventBridge desacopla produtores de consumidores, filas SQS absorvem picos de carga e garantem resiliência a falhas temporárias, e o DynamoDB lida com idempotência via ConditionExpression. Nenhuma chamada síncrona cruza fronteiras de serviço. O provisionamento da infraestrutura e feito com Terraform, e os scripts shell orquestram o ciclo de deploy e validacao.
 
 Este projeto e material de portfolio. Cada decisão técnica foi tomada com consciência dos trade-offs, documentada em [ARCHITECTURE.md](ARCHITECTURE.md), O objetivo e demonstrar pensamento sistêmico sobre arquitetura serverless, não apenas a implementação funcional.
 
@@ -157,14 +157,14 @@ Para decisões detalhadas de design, veja [ARCHITECTURE.md](ARCHITECTURE.md).
 | Servico | Papel no sistema | Alternativa avaliada |
 |---|---|---|
 | **API Gateway** | Ponto de entrada REST (11 endpoints) com Request Validator, CORS, API Key para /test | N/A (único serviço de API HTTP serverless da AWS) |
-| **Lambda** | 11 funções Python 3.12 para lógica de negócio serverless | ECS/Fargate: overhead operacional desnecessário para funções de curta duração |
+| **Lambda** | 10 funções Python 3.12 para lógica de negócio serverless | ECS/Fargate: overhead operacional desnecessário para funções de curta duração |
 | **SQS FIFO** | Buffer de validação com ordenação por pedido e ContentBasedDeduplication | Processamento síncrono: sem resiliência a falhas temporárias |
 | **SQS Standard** | 3 filas de processamento + 1 fila S3 batch, paralelismo garantido | FIFO para processamento: forjava sequencial sem ganho de corretude |
 | **EventBridge** | Barramento central de eventos, roteia por detail-type e source | SNS fanout: menor expressividade de filtro e sem suporte a Content-Based Filtering |
 | **DynamoDB** | 4 tabelas: pedidos (com GSI), auditoria (TTL 90d), catálogo, clientes | RDS: custo e operação mais altos para volume variável de laboratório |
 | **SNS** | Notificações de erro (duplicata, schema inválido, DLQ) para email | N/A (único serviço de pub/sub email da AWS) |
 | **S3** | 2 buckets: dados (batch files) e frontend (static website) | EFS: sem necessidade de sistema de arquivos compartilhado |
-| **IAM** | 11 roles com politicas de menor privilegio, inline e gerenciadas | N/A (único serviço de autorização AWS) |
+| **IAM** | 10 roles com politicas de menor privilegio, inline e gerenciadas | N/A (único serviço de autorização AWS) |
 | **CloudWatch** | Logs (retenção 14d), Alarmes (5 DLQs), métricas | X-Ray: não disponível na conta de laboratório |
 | **LocalStack** | Emulação local de serviços AWS via Docker | AWS real: custo para desenvolvimento iterativo |
 
@@ -172,48 +172,93 @@ Para decisões detalhadas de design, veja [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```text
 .
-├── scripts/              # IaC: deploy, validação, utilitários (26 funções lib.sh)
-├── src/                  # Codigo-fonte das 11 Lambdas + modulo common/
+├── scripts/              # Scripts de orquestração, validação e utilitários (lib.sh)
+├── terraform/            # IaC: infraestrutura como código (Terraform)
+├── src/                  # Codigo-fonte das 10 Lambdas + modulo common/
 ├── frontend/             # 2 frontends: CloudCert (index.html) + QA Dashboard (qa.html)
 ├── samples/              # Payloads de teste (api_request.json, batch JSONs)
-├── docs/                 # Documentação individual por componente (16 arquivos)
+├── docs/                 # Documentação individual por componente (17 arquivos)
 ├── ARCHITECTURE.md       # Decisões de design por tema (este documento)
 ├── run.sh                # Orquestrador principal: deploy completo + validação
-└── cleanup.sh            # Remoção completa de recursos (idempotente)
+└── cleanup.sh            # Remoção completa de recursos (Terraform destroy)
 ```
 
 ## Como Executar
 
 ### Pre-requisitos
 
+- Docker e Docker Compose (para LocalStack e containers Terraform)
 - AWS CLI v2 configurado
 - Python 3.12
-- Docker e Docker Compose (para LocalStack)
-- Utilitário `zip`
+
+### Configuracao do Ambiente
+
+Copie o template e preencha as variaveis:
+
+```bash
+cp .env.example .env
+```
+
+Variaveis obrigatorias no `.env`:
+
+| Variavel | Descricao | Exemplo |
+|---|---|---|
+| `DEPLOY_TARGET` | `localstack` (local) ou `aws` | `localstack` |
+| `AWS_REGION` | Regiao AWS | `us-east-1` |
+| `RESOURCE_SUFFIX` | Sufixo unico para nomes de recursos (letras minusculas, numeros e hifens, max 20) | `meu-nome` |
+
+Variaveis opcionais:
+
+| Variavel | Descricao | Padrao |
+|---|---|---|
+| `NOTIFICATION_EMAIL` | Email para alertas SNS (DLQ, erros) | vazio (sem notificacao) |
+| `ALLOWED_SOURCE_IP` | CIDR para restringir acesso ao endpoint `/test` | vazio (sem restricao) |
+
+### Fluxo de Deploy
+
+O script `run.sh` executa o pipeline completo:
+
+1. **Gera tfvars** — `scripts/generate-tfvars.sh` le o `.env` e cria `terraform/terraform.tfvars`
+2. **Terraform init + apply** (via Docker) — provisiona toda a infraestrutura (SQS, DynamoDB, Lambdas, API Gateway, S3, SNS, EventBridge, IAM) no LocalStack ou AWS real
+3. **Seed catalogo** — `scripts/seed-catalog.sh` popula a tabela `course-catalog` com 11 cursos
+4. **25 testes E2E** — valida cada fluxo do sistema (criacao de pedido, S3 batch, lifecycle, autenticacao, catalog, frontend)
 
 ### Deploy Local (LocalStack)
 
 ```bash
 cp .env.example .env
-docker-compose up -d
+# edite .env com seus valores (DEPLOY_TARGET=localstack, RESOURCE_SUFFIX, AWS_REGION)
+docker compose up -d
 ./run.sh
 ```
 
 ### Deploy na AWS
 
-Edite `.env`: defina `DEPLOY_TARGET=aws`, preencha `AWS_REGION`, `RESOURCE_SUFFIX`, `NOTIFICATION_EMAIL`.
+Edite `.env` com `DEPLOY_TARGET=aws`, preencha `AWS_REGION`, `RESOURCE_SUFFIX` e opcionalmente `NOTIFICATION_EMAIL` e `ALLOWED_SOURCE_IP`.
 
 ```bash
 ./run.sh
 ```
 
-### Executar testes E2E
+### Deploy incremental (re-aplicar)
+
+Terraform e idempotente: execute `./run.sh` novamente para atualizar apenas recursos modificados. O state e preservado em `terraform/terraform.tfstate`.
+
+### Executar apenas os testes (sem deploy)
 
 ```bash
 ./scripts/validate-flow.sh
 ```
 
 25 testes que cobrem: criação de pedidos, processamento S3 batch, lifecycle (cancelar/atualizar), duplicatas, consultas, alertas SNS, filas DLQ, catálogo, autenticação JWT, gateway de pedidos, e frontends.
+
+### Limpeza
+
+```bash
+./cleanup.sh
+```
+
+Remove todos os recursos AWS provisionados (tabelas, filas, funcoes, buckets, API Gateway) via `terraform destroy` (executado em container Docker).
 
 ## Decisões de Design em Destaque
 

@@ -17,7 +17,7 @@ Dois frontends servidos no mesmo bucket S3 Static Website:
 | `frontend/qa.html` | Painel de QA interno (copiado do index.html original). |
 | `frontend/qa.js` | Lógica do painel de QA (copiado do app.js original). |
 | `frontend/style.css` | Estilos compartilhados entre produto e QA. |
-| `frontend/config.template.js` | Template com placeholders processado pelo deploy. |
+| `frontend/config.js` | Gerado pelo Terraform via `locals.tf` com endpoints injetados. |
 
 ## Gestao de estado
 
