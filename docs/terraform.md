@@ -2,9 +2,8 @@
 
 ## Visao Geral
 
-A infraestrutura do CloudCert foi migrada de 8 scripts Bash + AWS CLI para
-Terraform. O diretorio `terraform/` contem toda a configuracao de infraestrutura
-como codigo (IaC), mantendo nomes de recursos identicos aos originais.
+O diretorio `terraform/` contem toda a configuracao de infraestrutura como
+codigo (IaC) para o CloudCert.
 
 ## Estrutura
 
@@ -66,7 +65,7 @@ cd terraform && terraform apply -auto-approve
 ./cleanup.sh
 ```
 
-O novo `cleanup.sh` executa `generate-tfvars.sh` e `terraform destroy`.
+O `cleanup.sh` executa `generate-tfvars.sh` e `terraform destroy`.
 
 ## Mapa de Arquivos .tf para Recursos AWS
 
@@ -97,10 +96,12 @@ content-based deduplication.
 ## Suporte a LocalStack
 
 Quando `deploy_target = "localstack"`, o provider AWS:
-- Usa credenciais dummy (`test`/`test`)
 - Ignora validacao de credenciais e metadata API
 - Configura endpoints para `http://localhost:4566` em todos os servicos
+- Usa `s3_use_path_style = true` (DNS virtual-hosted falha dentro do container Docker)
 - As URLs de API e frontend usam o formato localstack.cloud
+
+As credenciais sao herdadas do `~/.aws` montado no container Docker.
 
 ## Gerenciamento do JWT Secret
 
@@ -119,7 +120,6 @@ Os zips sao gerados em `terraform/builds/` e referenciados pelo `filename` e
 
 ## validate-flow.sh como Gate de Aceitacao
 
-O script `validate-flow.sh` continua sendo o entry point de validacao de ponta
-a ponta. A diferenca e que o bloco de deploy agora usa Terraform em vez de
-chamar os 8 scripts individuais. Os 25 testes de aceitacao permanecem
-identicos.
+O script `validate-flow.sh` e o entry point de validacao de ponta a ponta.
+Ele executa `terraform init + apply`, cria os log groups CloudWatch via AWS CLI,
+popula o catalogo DynamoDB e executa 25 testes de aceitacao.

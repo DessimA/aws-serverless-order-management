@@ -127,9 +127,9 @@ O `POST /orders` não exige autenticação no backend (pre-validator não valida
 
 Cancelamento e atualização são operações assincronas via EventBridge. O frontend retorna 202 e exibe "solicitado, aguarde" porque a mudança de estado so ocorre apos o lifecycle-processor processar o evento. Apos 3 segundos o frontend faz refresh automático do detalhe.
 
-### Preservação do QA dashboard
+### QA dashboard
 
-O QA dashboard foi preservado em vez de removido porque e usado pelo `validate-flow.sh` (Testes 6, 7, 8) e serve como ferramenta de validação do pipeline de deploy. Registrar, logar e testar o fluxo completo no QA dashboard continua funcionando normalmente em `/qa.html`.
+O QA dashboard e usado pelo `validate-flow.sh` (Testes 6, 7, 8) e serve como ferramenta de validação do pipeline de deploy. Registrar, logar e testar o fluxo completo no QA dashboard funciona em `/qa.html`.
 
 ### localStorage em vez de HttpOnly cookies
 

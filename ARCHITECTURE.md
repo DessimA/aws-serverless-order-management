@@ -286,10 +286,6 @@ O `reserved_concurrency` limita o numero maximo de execuções simultaneas de ca
 
 ## 7. IaC com Terraform: escolha e limites
 
-### Migração de shell scripts para Terraform
-
-A versão inicial do projeto usava 8 scripts shell com o padrão `ensure_*` (check-before-create via AWS CLI). A versão atual substitui todos os scripts de deploy por Terraform, mantendo identicos os nomes de recursos AWS, o codigo Lambda, o frontend e os testes E2E.
-
 ### Estrutura do Terraform
 
 ```
@@ -303,7 +299,7 @@ terraform/
 ├── dynamodb.tf           # 4 tabelas (pay-per-request, GSI, TTL)
 ├── iam.tf                # 10 roles com politicas de menor privilegio
 ├── sqs.tf                # 5 filas + DLQs (modulo reutilizavel)
-├── lambda_functions.tf   # 10 Lambdas + log groups + ESMs
+├── lambda_functions.tf   # 10 Lambdas + ESMs
 ├── eventbridge_rules.tf  # 3 regras + targets SQS
 ├── api_gateway.tf        # REST API, CORS, deployment, usage plan
 ├── s3.tf                 # Buckets de dados e frontend
@@ -314,21 +310,21 @@ terraform/
 
 ### Por que Terraform?
 
-| Aspecto | Shell + AWS CLI (anterior) | Terraform (atual) |
-|---|---|---|
-| Preview de mudancas | Nenhum (sem plan) | `terraform plan` |
-| Grafo de dependencias | Manual (ordem dos scripts) | Automático |
-| State management | Nenhum (idempotência via check) | `terraform.tfstate` |
-| Reprovisionamento completo | `cleanup.sh` manual | `terraform destroy` + `apply` |
-| Modularidade | Funções em `lib.sh` | Modulos HCL reutilizaveis |
-| Suporte LocalStack | Variavel `AWS_ENDPOINT_URL` | Bloco `endpoints` dinamico |
+| Aspecto | Terraform |
+|---|---|
+| Preview de mudancas | `terraform plan` |
+| Grafo de dependencias | Automático (HCL) |
+| State management | `terraform.tfstate` |
+| Reprovisionamento completo | `terraform destroy` + `apply` |
+| Modularidade | Modulos HCL reutilizaveis |
+| Suporte LocalStack | Bloco `endpoints` dinamico |
 
-### O que permaneceu em shell script
+### Scripts de orquestracao
 
-Alguns scripts shell foram mantidos por nao se tratar de provisionamento de infraestrutura:
+Scripts shell orquestram o ciclo de deploy e validacao, mas nao provisionam infraestrutura:
 
-- **`scripts/lib.sh`** - Utilitarios compartilhados (validacao, polling, construcao de URLs)
-- **`scripts/validate-flow.sh`** - Gate de aceitacao E2E com 25 testes (agora orquestra Terraform + seed-catalog)
+- **`scripts/lib.sh`** - Utilitarios compartilhados (validacao, polling, criacao de log groups)
+- **`scripts/validate-flow.sh`** - Gate de aceitacao E2E com 25 testes (orquestra Terraform + seed-catalog)
 - **`scripts/seed-catalog.sh`** - Populacao inicial do catalogo DynamoDB (dados, nao infra)
 - **`scripts/generate-tfvars.sh`** - Gera `terraform.tfvars` a partir do `.env`
 - **`cleanup.sh`** - Invoca `terraform destroy` com o tfvars gerado

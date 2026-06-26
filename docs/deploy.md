@@ -42,7 +42,7 @@ Suporta filas FIFO e standard, visibility timeout configuravel.
 
 | Script | Finalidade |
 |---|---|
-| `lib.sh` | Biblioteca compartilhada (26 funcoes utilitarias) |
+| `lib.sh` | Biblioteca compartilhada (6 funcoes utilitarias) |
 | `generate-tfvars.sh` | Gera terraform.tfvars a partir do .env |
 | `seed-catalog.sh` | Upsert de 11 itens no catalogo (1 com disponivel=false) |
 | `validate-flow.sh` | Deploy completo + 25 testes E2E |

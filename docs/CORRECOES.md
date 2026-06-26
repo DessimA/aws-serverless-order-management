@@ -45,7 +45,6 @@ A arquitetura e orientada a eventos. Nenhuma chamada sincrona cruza fronteiras d
 13. `frontend/app.js`, `frontend/qa.js`: removida constante duplicada `API_ENDPOINT` em favor de `ORDERS_ENDPOINT`; config.js removido do repositorio e gerado pelo Terraform via `locals.tf` config_js_content
 14. `README.md`: removido placeholder `$FRONTEND_URL` e referencia a "rodadas"
 15. `SECURITY.md`: descricao do frontend principal corrigida (portfolio product vs testing tool)
-16. Deploy scripts substituidos por Terraform: `deploy-api-flow.sh`, `deploy-order-processor.sh`, `deploy-lifecycle-ops.sh`, `deploy-s3-flow.sh`, `deploy-customer-auth.sh`, `deploy-order-gateway.sh`, `deploy-catalog.sh`, `deploy-frontend.sh` removidos; `docs/deploy_scripts.md` reescrito e renomeado para `docs/deploy.md`
+16. `docs/deploy.md`: documentacao de deploy baseada em Terraform
 17. `docs/CORRECOES.md`: corrigido typo "ingegestao" para "ingestao"
-18. `scripts/validate-flow.sh`: bloco de deploy substituido por Terraform init + apply
 
